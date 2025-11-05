@@ -4,8 +4,9 @@ import { createServer } from 'http'
 const httpServer = createServer()
 const io = new Server(httpServer, {
   cors: {
-    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+    origin: process.env.FRONTEND_URL || '*', // Allow all origins in production, or set specific URL
     methods: ['GET', 'POST'],
+    credentials: true,
   },
 })
 

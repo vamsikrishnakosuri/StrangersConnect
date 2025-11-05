@@ -16,7 +16,19 @@ A free and open source application that allows strangers from around the world t
 - **Backend**: Node.js, Socket.io
 - **Real-time**: WebSocket connections for instant messaging
 
-## Getting Started 🚀
+## 🚀 Quick Deploy (Share with Friends!)
+
+**Want to deploy and share with friends?** Check out **[QUICK_DEPLOY.md](./QUICK_DEPLOY.md)** for a simple 15-minute guide!
+
+Deploy to:
+- **Railway** (Server) - Free tier available
+- **Vercel** (Frontend) - Perfect for Next.js, free tier
+
+After deployment, you'll get a web link you can share with anyone! ✨
+
+---
+
+## Getting Started (Local Development) 🛠️
 
 ### Prerequisites
 
@@ -26,8 +38,8 @@ A free and open source application that allows strangers from around the world t
 
 1. Clone the repository:
 ```bash
-git clone <your-repo-url>
-cd Strangers
+git clone https://github.com/vamsikrishnakosuri/StrangersConnect.git
+cd StrangersConnect
 ```
 
 2. Install dependencies for the main app:
