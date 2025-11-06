@@ -87,8 +87,8 @@ io.on('connection', (socket) => {
     }
   })
 
-  // WebRTC signaling handlers
-  socket.on('webrtc-offer', (data: { offer: RTCSessionDescriptionInit; strangerId: string; senderId: string }) => {
+  // WebRTC signaling handlers (using any for WebRTC types since they're browser-only)
+  socket.on('webrtc-offer', (data: { offer: any; strangerId: string; senderId: string }) => {
     const sender = users.get(data.senderId)
     const stranger = users.get(data.strangerId)
     
@@ -100,7 +100,7 @@ io.on('connection', (socket) => {
     }
   })
 
-  socket.on('webrtc-answer', (data: { answer: RTCSessionDescriptionInit; strangerId: string; senderId: string }) => {
+  socket.on('webrtc-answer', (data: { answer: any; strangerId: string; senderId: string }) => {
     const sender = users.get(data.senderId)
     const stranger = users.get(data.strangerId)
     
@@ -112,7 +112,7 @@ io.on('connection', (socket) => {
     }
   })
 
-  socket.on('webrtc-ice-candidate', (data: { candidate: RTCIceCandidateInit; strangerId: string; senderId: string }) => {
+  socket.on('webrtc-ice-candidate', (data: { candidate: any; strangerId: string; senderId: string }) => {
     const sender = users.get(data.senderId)
     const stranger = users.get(data.strangerId)
     
