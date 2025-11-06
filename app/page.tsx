@@ -28,6 +28,7 @@ export default function Home() {
     const localStreamRef = useRef<MediaStream | null>(null)
     const peerConnectionRef = useRef<RTCPeerConnection | null>(null)
     const messagesEndRef = useRef<HTMLDivElement>(null)
+    const pendingIceCandidatesRef = useRef<RTCIceCandidate[]>([]) // Queue ICE candidates until strangerId is ready
 
     // Auto-scroll messages
     useEffect(() => {
@@ -59,55 +60,36 @@ export default function Home() {
                 })
             }
 
-            // Check video tracks status
+            // Check video tracks status (only log errors, not every check)
             const videoTracks = stream.getVideoTracks()
-            const activeTrack = videoTracks.find(t => t.readyState === 'live' && !t.muted)
-
             if (videoTracks.length > 0) {
                 const track = videoTracks[0]
 
-                // If track is muted or ended, try to recover
+                // Only log if there's an actual problem (not muted - that's normal initially)
                 if (track.readyState === 'ended') {
                     console.warn('🔄 Track ended - checking for new tracks...')
-                    // Stream will automatically update if new tracks arrive
-                } else if (track.muted) {
-                    console.warn('🔄 Track muted - waiting for unmute...')
-                    // Track might unmute soon
                 }
+                // Don't log muted state repeatedly - it's normal initially
 
-                // Log track state periodically
-                if (Math.random() < 0.1) { // 10% of checks
-                    console.log('📊 Track status:', {
-                        enabled: track.enabled,
-                        muted: track.muted,
-                        readyState: track.readyState,
-                        videoWidth: video.videoWidth,
-                        videoHeight: video.videoHeight
-                    })
-                }
-            }
-
-            // Check video dimensions
-            if (video.videoWidth > 0 && video.videoHeight > 0) {
-                if (video.videoWidth <= 2 && video.videoHeight <= 2) {
-                    // Video has no content - try to force play anyway
-                    console.warn('⚠️ Video dimensions are 2x2 - attempting recovery...')
-                    if (video.paused) {
-                        video.play().catch(e => console.log('Recovery play failed:', e))
+                // Check video dimensions only if problematic
+                if (video.videoWidth > 0 && video.videoHeight > 0) {
+                    if (video.videoWidth <= 2 && video.videoHeight <= 2) {
+                        // Video has no content - try to force play anyway
+                        console.warn('⚠️ Video dimensions are 2x2 - attempting recovery...')
+                        if (video.paused) {
+                            video.play().catch(() => {})
+                        }
+                    } else {
+                        // Video has real dimensions - mark as ready
+                        setRemoteVideoReady(true)
                     }
-                } else {
-                    // Video has real dimensions - mark as ready
-                    setRemoteVideoReady(true)
                 }
             }
 
             // ALWAYS try to play if paused (recovery mechanism)
             if (video.paused && stream.getVideoTracks().length > 0) {
-                video.play().catch(err => {
-                    // Silently handle autoplay blocks - they're expected
-                    if (err.name !== 'NotAllowedError') {
-                        console.log('Play attempt:', err)
-                    }
+                video.play().catch(() => {
+                    // Silently handle - autoplay blocks are expected
                 })
             }
         }
@@ -250,6 +232,7 @@ export default function Home() {
                     return
                 }
 
+                // Accept tracks even if muted initially - they may unmute
                 const activeVideoTrack = videoTracks.find(t => t.enabled && t.readyState === 'live')
                 if (!activeVideoTrack) {
                     console.error('❌❌❌ ERROR: No active video track found in stream!')
@@ -259,6 +242,11 @@ export default function Home() {
                         muted: t.muted
                     })))
                     return
+                }
+                
+                // Log if track is muted but proceed anyway - it may unmute
+                if (activeVideoTrack.muted) {
+                    console.log('⚠️ Video track is muted initially - will wait for unmute')
                 }
 
                 console.log('✅ Found active video track:', {
@@ -451,7 +439,7 @@ export default function Home() {
                 })
 
                 // Send ICE candidate if socket and strangerId are available
-                // Note: socket and strangerId might not be available yet, so we'll set this up in the socket effect
+                // Queue candidates if not ready yet (they'll be sent when matched)
                 if (socket && strangerId) {
                     socket.emit('webrtc-ice', {
                         candidate: event.candidate,
@@ -459,7 +447,8 @@ export default function Home() {
                     })
                     console.log('📤 Sent ICE candidate to stranger')
                 } else {
-                    console.warn('⚠️ ICE candidate generated but socket/strangerId not ready yet')
+                    // Queue candidate for later - will be sent when strangerId is set
+                    pendingIceCandidatesRef.current.push(event.candidate)
                 }
             } else {
                 console.log('🧊 ICE gathering complete - no more candidates')
@@ -569,6 +558,18 @@ export default function Home() {
             setIsMatched(true)
             setStrangerId(data.strangerId)
             setMessages([{ id: uuidv4(), text: '🎥 Starting video...', sender: 'stranger' }])
+
+            // Send any queued ICE candidates now that we have strangerId
+            if (pendingIceCandidatesRef.current.length > 0) {
+                console.log(`📤 Sending ${pendingIceCandidatesRef.current.length} queued ICE candidates`)
+                pendingIceCandidatesRef.current.forEach(candidate => {
+                    newSocket.emit('webrtc-ice', {
+                        candidate: candidate,
+                        to: data.strangerId,
+                    })
+                })
+                pendingIceCandidatesRef.current = [] // Clear queue
+            }
 
             // ALWAYS start video for BOTH users - no matter who creates offer
             console.log('🎥 Starting camera...')
