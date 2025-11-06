@@ -382,11 +382,34 @@ export default function Home() {
         // If stranger sent an offer, switch to video mode and accept
         if (!isMatched) return
         
-        // Switch to video mode if not already
+        console.log('Received WebRTC offer from stranger, switching to video mode...')
+        
+        // Switch to video mode if not already - this will trigger stream start
         if (chatMode !== 'video') {
+          console.log('Auto-switching to video mode...')
           setChatMode('video')
+          
+          // Give React time to update state, then start stream
+          setTimeout(async () => {
+            if (!localStreamRef.current) {
+              console.log('Starting local stream for incoming offer...')
+              await startLocalStream()
+            }
+            
+            if (!peerConnectionRef.current) {
+              console.log('Initializing peer connection for incoming offer...')
+              initializePeerConnection()
+            }
+            
+            // Continue with handling the offer
+            if (peerConnectionRef.current && localStreamRef.current) {
+              await handleIncomingOffer(data.offer)
+            }
+          }, 100)
+          return
         }
         
+        // If already in video mode, handle offer immediately
         if (!peerConnectionRef.current) {
           initializePeerConnection()
           
@@ -395,38 +418,71 @@ export default function Home() {
             await startLocalStream()
           }
         }
-
-        if (peerConnectionRef.current && localStreamRef.current) {
-          // Make sure all tracks are added
-          localStreamRef.current.getTracks().forEach((track) => {
-            const existingSender = peerConnectionRef.current?.getSenders().find(
-              (s) => s.track === track
-            )
-            if (!existingSender) {
-              peerConnectionRef.current?.addTrack(track, localStreamRef.current!)
-            }
-          })
-          
-          await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(data.offer))
-          
-          const answer = await peerConnectionRef.current.createAnswer({
-            offerToReceiveAudio: true,
-            offerToReceiveVideo: true,
-          })
-          await peerConnectionRef.current.setLocalDescription(answer)
-          
-          if (strangerId) {
-            newSocket.emit('webrtc-answer', {
-              answer,
-              strangerId,
-              senderId: userId.current,
-            })
-          }
-        }
+        
+        await handleIncomingOffer(data.offer)
       } catch (error) {
         console.error('Error handling WebRTC offer:', error)
       }
     })
+    
+    // Helper function to handle incoming offer
+    const handleIncomingOffer = async (offer: RTCSessionDescriptionInit) => {
+      if (!peerConnectionRef.current) {
+        console.error('Peer connection not ready')
+        return
+      }
+      
+      // Ensure local stream exists
+      if (!localStreamRef.current) {
+        console.log('Local stream missing, starting it...')
+        await startLocalStream()
+      }
+      
+      if (!localStreamRef.current) {
+        console.error('Failed to start local stream')
+        return
+      }
+
+      // Make sure all tracks are added and enabled
+      localStreamRef.current.getTracks().forEach((track) => {
+        // Ensure tracks are enabled
+        if (!track.enabled) {
+          track.enabled = true
+          console.log('Enabled track:', track.kind)
+        }
+        
+        const existingSender = peerConnectionRef.current?.getSenders().find(
+          (s) => s.track === track
+        )
+        if (!existingSender) {
+          peerConnectionRef.current?.addTrack(track, localStreamRef.current!)
+          console.log('Added track to peer connection:', track.kind, track.enabled)
+        }
+      })
+      
+      try {
+        await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(offer))
+        console.log('Set remote description successfully')
+        
+        const answer = await peerConnectionRef.current.createAnswer({
+          offerToReceiveAudio: true,
+          offerToReceiveVideo: true,
+        })
+        await peerConnectionRef.current.setLocalDescription(answer)
+        console.log('Created and set local answer')
+        
+        if (strangerId) {
+          newSocket.emit('webrtc-answer', {
+            answer,
+            strangerId,
+            senderId: userId.current,
+          })
+          console.log('Sent WebRTC answer to stranger')
+        }
+      } catch (error) {
+        console.error('Error in handleIncomingOffer:', error)
+      }
+    }
 
     newSocket.on('webrtc-answer', async (data: { answer: RTCSessionDescriptionInit; senderId: string }) => {
       if (peerConnectionRef.current) {
