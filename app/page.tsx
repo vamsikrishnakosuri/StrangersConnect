@@ -97,8 +97,8 @@ export default function Home() {
         // Check immediately
         checkVideo()
 
-        // Check VERY frequently (every 200ms) for aggressive recovery
-        const interval = setInterval(checkVideo, 200)
+        // Check periodically for recovery (reduced frequency to reduce log spam)
+        const interval = setInterval(checkVideo, 1000) // Check every 1 second (reduced from 200ms)
         return () => clearInterval(interval)
     }, [isMatched, remoteVideoReady])
 
