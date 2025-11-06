@@ -80,13 +80,18 @@ export default function Home() {
                             await remoteVideoRef.current.play()
                             console.log('✅✅✅ REMOTE VIDEO PLAYING! ✅✅✅')
                             console.log('Video dimensions:', remoteVideoRef.current.videoWidth, 'x', remoteVideoRef.current.videoHeight)
-                        } catch (error) {
-                            console.error('❌ Play failed:', error)
-                            console.error('Error name:', error.name)
-                            console.error('Error message:', error.message)
-
-                            // If autoplay policy issue, show user a message
-                            if (error.name === 'NotAllowedError' || error.name === 'NotAllowedError') {
+            } catch (error) {
+              console.error('❌ Play failed:', error)
+              
+              const errorObj = error as Error
+              const errorName = errorObj.name || 'Unknown'
+              const errorMessage = errorObj.message || String(error)
+              
+              console.error('Error name:', errorName)
+              console.error('Error message:', errorMessage)
+              
+              // If autoplay policy issue, show user a message
+              if (errorName === 'NotAllowedError') {
                                 console.warn('⚠️ Autoplay blocked - user interaction required')
                                 // Try again after a click
                                 document.addEventListener('click', () => {
