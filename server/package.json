@@ -1,20 +1,19 @@
 {
   "name": "strangers-connect-server",
   "version": "1.0.0",
-  "description": "Socket.io server for Strangers Connect",
+  "description": "Simple Socket.io server for StrangersConnect",
   "main": "index.ts",
   "scripts": {
-    "dev": "tsx watch index.ts",
     "start": "tsx index.ts",
-    "build": "tsc"
+    "build": "tsc",
+    "dev": "tsx watch index.ts"
   },
   "dependencies": {
-    "peer": "^1.0.2",
-    "socket.io": "^4.6.0"
+    "socket.io": "^4.7.2"
   },
   "devDependencies": {
-    "@types/node": "^20.0.0",
-    "tsx": "^4.6.0",
-    "typescript": "^5.0.0"
+    "@types/node": "^20.10.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3"
   }
 }
