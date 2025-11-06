@@ -40,10 +40,15 @@ peerServer.on('disconnect', (client) => {
 
 const io = new Server(httpServer, {
   cors: {
-    origin: process.env.FRONTEND_URL || '*', // Allow all origins in production, or set specific URL
-    methods: ['GET', 'POST'],
+    origin: '*',
+    methods: ['GET', 'POST', 'OPTIONS'],
     credentials: true,
+    allowedHeaders: ['*'],
   },
+  transports: ['websocket', 'polling'], // Allow both WebSocket and polling
+  allowEIO3: true, // Allow older clients
+  pingTimeout: 60000,
+  pingInterval: 25000,
 })
 
 interface User {
