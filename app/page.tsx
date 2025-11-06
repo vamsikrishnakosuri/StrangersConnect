@@ -365,7 +365,21 @@ export default function Home() {
 
                 {/* Video Container */}
                 {isMatched && (
-                    <div className="mb-4 bg-black rounded-lg overflow-hidden relative" style={{ aspectRatio: '16/9' }}>
+                    <div 
+                      className="mb-4 bg-black rounded-lg overflow-hidden relative cursor-pointer" 
+                      style={{ aspectRatio: '16/9' }}
+                      onClick={() => {
+                        // Make entire video area clickable to start playback
+                        if (remoteVideoRef.current && remoteVideoRef.current.paused) {
+                          remoteVideoRef.current.play()
+                            .then(() => {
+                              console.log('✅ Video started after click')
+                              setShowPlayButton(false)
+                            })
+                            .catch(e => console.error('Click play failed:', e))
+                        }
+                      }}
+                    >
                         {/* Remote Video - Always rendered, never removed */}
                         <video
                             ref={remoteVideoRef}
@@ -381,6 +395,28 @@ export default function Home() {
                                 visibility: remoteVideoReady ? 'visible' : 'hidden'
                             }}
                         />
+                        
+                        {/* Play Button - Shown when autoplay is blocked */}
+                        {showPlayButton && (
+                          <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-75 z-20">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                if (remoteVideoRef.current) {
+                                  remoteVideoRef.current.play()
+                                    .then(() => {
+                                      console.log('✅ Video started from button')
+                                      setShowPlayButton(false)
+                                    })
+                                    .catch(err => console.error('Button play failed:', err))
+                                }
+                              }}
+                              className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold text-lg shadow-lg"
+                            >
+                              ▶️ Click to See Stranger
+                            </button>
+                          </div>
+                        )}
 
                         {/* Placeholder */}
                         {!remoteVideoReady && (
