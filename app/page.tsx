@@ -652,7 +652,7 @@ export default function Home() {
         
         const currentSocket = socketRef.current || newSocket
         // Use the senderId from the offer if we don't have strangerId yet
-        const targetStrangerId = strangerId || data?.senderId || pendingOfferRef.current?.senderId
+        const targetStrangerId = strangerId || senderId || pendingOfferRef.current?.senderId
         
         if (targetStrangerId && currentSocket) {
           currentSocket.emit('webrtc-answer', {
@@ -664,7 +664,7 @@ export default function Home() {
         } else {
           console.error('❌ Cannot send answer - missing target:', { 
             strangerId, 
-            senderId: data?.senderId,
+            senderId: senderId,
             pendingSenderId: pendingOfferRef.current?.senderId,
             hasSocket: !!currentSocket 
           })
