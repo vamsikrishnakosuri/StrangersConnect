@@ -76,14 +76,21 @@ io.on('connection', (socket) => {
   socket.on('webrtc-ice', (data: { candidate: any; to: string }) => {
     const fromUserId = Array.from(users.entries()).find(([_, u]) => u.socketId === socket.id)?.[0]
     const toUser = users.get(data.to)
-    console.log(`Forwarding ICE candidate from ${fromUserId} to ${data.to} (socketId: ${toUser?.socketId})`)
+    console.log(`🔊 SERVER: Forwarding ICE candidate from ${fromUserId} to ${data.to} (socketId: ${toUser?.socketId})`)
+    console.log(`🔊 SERVER: Candidate data:`, { 
+      hasCandidate: !!data.candidate, 
+      candidateType: data.candidate?.type,
+      candidatePreview: data.candidate?.candidate?.substring(0, 50) 
+    })
     if (toUser?.socketId) {
       io.to(toUser.socketId).emit('webrtc-ice', {
         candidate: data.candidate,
         from: fromUserId
       })
+      console.log(`✅ SERVER: ICE candidate emitted to socket ${toUser.socketId}`)
     } else {
-      console.error(`❌ Cannot forward ICE candidate - user ${data.to} not found`)
+      console.error(`❌ SERVER: Cannot forward ICE candidate - user ${data.to} not found or has no socketId`)
+      console.error(`🔍 SERVER: Available users:`, Array.from(users.keys()))
     }
   })
 

@@ -54,7 +54,7 @@ export default function Home() {
             video.style.display = 'block'
             video.style.visibility = 'visible'
             video.style.zIndex = '15'
-            
+
             // CRITICAL: If video has srcObject but is paused, try to play
             if (video.srcObject && video.paused) {
                 video.play().catch(err => {
@@ -79,7 +79,7 @@ export default function Home() {
                         // Video has no content - try to force play anyway
                         console.warn('⚠️ Video dimensions are 2x2 - attempting recovery...')
                         if (video.paused) {
-                            video.play().catch(() => {})
+                            video.play().catch(() => { })
                         }
                     } else {
                         // Video has real dimensions - mark as ready
@@ -255,7 +255,7 @@ export default function Home() {
                     })))
                     return
                 }
-                
+
                 // Log if track is muted but proceed anyway - it may unmute
                 if (activeVideoTrack.muted) {
                     console.log('⚠️ Video track is muted initially - will wait for unmute')
@@ -336,7 +336,7 @@ export default function Home() {
                     remoteVideoRef.current.play()
                         .then(() => {
                             console.log('✅✅✅ REMOTE VIDEO PLAYING! ✅✅✅')
-                            
+
                             // Check WebRTC connection state
                             const pc = peerConnectionRef.current
                             if (pc) {
@@ -346,7 +346,7 @@ export default function Home() {
                                     signalingState: pc.signalingState
                                 })
                             }
-                            
+
                             // Wait a bit for video to load, then check dimensions
                             setTimeout(() => {
                                 const width = remoteVideoRef.current?.videoWidth || 0
@@ -362,7 +362,7 @@ export default function Home() {
                                     console.error('2. Remote peer camera permission denied')
                                     console.error('3. WebRTC connection issue - check ICE/connection state above')
                                     console.error('4. Remote video track ended or muted')
-                                    
+
                                     // Check connection state
                                     if (pc) {
                                         if (pc.iceConnectionState !== 'connected' && pc.iceConnectionState !== 'completed') {
@@ -490,7 +490,7 @@ export default function Home() {
                 // ALWAYS use refs to get current values (they're updated when match happens)
                 const socketToUse = socketRef.current
                 const strangerIdToUse = strangerIdRef.current
-                
+
                 if (socketToUse && strangerIdToUse) {
                     socketToUse.emit('webrtc-ice', {
                         candidate: event.candidate,
@@ -616,7 +616,7 @@ export default function Home() {
             console.log('🎥 Starting camera...')
             // Update socket ref before creating peer connection
             socketRef.current = newSocket
-            
+
             // Update peer connection's ICE candidate handler if it already exists
             if (peerConnectionRef.current) {
                 peerConnectionRef.current.onicecandidate = (event) => {
@@ -626,7 +626,7 @@ export default function Home() {
                             sdpMLineIndex: event.candidate.sdpMLineIndex,
                             sdpMid: event.candidate.sdpMid
                         })
-                        
+
                         if (newSocket && data.strangerId) {
                             newSocket.emit('webrtc-ice', {
                                 candidate: event.candidate,
@@ -639,7 +639,7 @@ export default function Home() {
                     }
                 }
             }
-            
+
             const pc = await startVideo()
 
             if (!pc) {
@@ -659,10 +659,10 @@ export default function Home() {
                             sdpMLineIndex: event.candidate.sdpMLineIndex,
                             sdpMid: event.candidate.sdpMid
                         })
-                        
+
                         const socketToUse = socketRef.current
                         const strangerIdToUse = strangerIdRef.current
-                        
+
                         if (socketToUse && strangerIdToUse) {
                             socketToUse.emit('webrtc-ice', {
                                 candidate: event.candidate,
@@ -718,7 +718,7 @@ export default function Home() {
                 strangerIdRef.current = data.from
                 setStrangerId(data.from)
             }
-            
+
             // Update ICE candidate handler to use current socket and strangerId
             if (peerConnectionRef.current) {
                 peerConnectionRef.current.onicecandidate = (event) => {
@@ -728,10 +728,10 @@ export default function Home() {
                             sdpMLineIndex: event.candidate.sdpMLineIndex,
                             sdpMid: event.candidate.sdpMid
                         })
-                        
+
                         const socketToUse = socketRef.current
                         const strangerIdToUse = strangerIdRef.current
-                        
+
                         if (socketToUse && strangerIdToUse) {
                             socketToUse.emit('webrtc-ice', {
                                 candidate: event.candidate,
@@ -767,7 +767,7 @@ export default function Home() {
 
                     newSocket.emit('webrtc-answer', { answer, to: data.from })
                     console.log('📤 Sent answer to:', data.from)
-                    
+
                     // Send any queued ICE candidates now
                     if (pendingIceCandidatesRef.current.length > 0) {
                         console.log(`📤 Sending ${pendingIceCandidatesRef.current.length} queued ICE candidates`)
@@ -794,13 +794,36 @@ export default function Home() {
             }
         })
 
-        newSocket.on('webrtc-ice', async (data: { candidate: RTCIceCandidateInit }) => {
-            console.log('🧊 Received ICE candidate from stranger')
+        newSocket.on('webrtc-ice', async (data: { candidate: RTCIceCandidateInit; from?: string }) => {
+            console.log('🧊 Received ICE candidate from stranger', { 
+                from: data.from, 
+                hasCandidate: !!data.candidate,
+                candidateType: data.candidate?.type,
+                candidatePreview: data.candidate?.candidate?.substring(0, 50) 
+            })
+            
+            if (!data.candidate) {
+                console.log('🧊 Received null ICE candidate (gathering complete signal)')
+                return
+            }
+            
             if (peerConnectionRef.current) {
                 try {
                     // Allow adding candidates even before remote description is set (they'll be queued)
                     await peerConnectionRef.current.addIceCandidate(data.candidate)
                     console.log('✅ Added ICE candidate to peer connection')
+                    
+                    // Log connection state after adding candidate
+                    setTimeout(() => {
+                        const pc = peerConnectionRef.current
+                        if (pc) {
+                            console.log('📊 Connection state after adding candidate:', {
+                                iceConnectionState: pc.iceConnectionState,
+                                connectionState: pc.connectionState,
+                                iceGatheringState: pc.iceGatheringState
+                            })
+                        }
+                    }, 100)
                 } catch (error) {
                     console.error('❌ Error adding ICE candidate:', error)
                     // If it fails because remoteDescription isn't set, queue it
