@@ -1042,9 +1042,11 @@ export default function Home() {
                             }
                         }}
                         onMouseUp={() => setRemoteVideoDragging(false)}
-                        onMouseLeave={() => setRemoteVideoDragging(false)}
+                        onMouseLeave={() => {
+                            setRemoteVideoDragging(false)
+                            setShowRemoteControls(false)
+                        }}
                         onMouseEnter={() => setShowRemoteControls(true)}
-                        onMouseLeave={() => setShowRemoteControls(false)}
                     >
                         <video
                             key="remote-video"
