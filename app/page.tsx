@@ -445,6 +445,7 @@ export default function Home() {
     })
 
     newSocket.on('matched', async (data: { strangerId: string }) => {
+      console.log('✅ Match found! Stranger ID:', data.strangerId)
       setIsSearching(false)
       setIsMatched(true)
       setStrangerId(data.strangerId)
@@ -454,6 +455,7 @@ export default function Home() {
         sender: 'stranger',
         timestamp: new Date(),
       }])
+      console.log('Match state updated - isMatched: true, strangerId:', data.strangerId)
 
       // Note: Video initialization handled separately when user switches to video mode
     })
@@ -492,13 +494,33 @@ export default function Home() {
     // WebRTC signaling handlers
     newSocket.on('webrtc-offer', async (data: { offer: RTCSessionDescriptionInit; senderId: string }) => {
       try {
-        // If stranger sent an offer, switch to video mode and accept
-        if (!isMatched) {
-          console.warn('Received offer but not matched yet')
-          return
+        console.log('📨 Received WebRTC offer from:', data.senderId)
+        console.log('Current isMatched state:', isMatched)
+        console.log('Current strangerId:', strangerId)
+        console.log('Offer senderId:', data.senderId)
+        
+        // Check if we should accept this offer
+        // Accept if: matched AND (sender is our stranger OR we don't have a strangerId yet)
+        const shouldAccept = isMatched && (strangerId === data.senderId || !strangerId)
+        
+        if (!shouldAccept) {
+          console.warn('⚠️ Received offer but conditions not met:', {
+            isMatched,
+            strangerId,
+            senderId: data.senderId,
+            shouldAccept
+          })
+          // Still try to accept if we have a strangerId (might be timing issue)
+          if (!strangerId) {
+            console.warn('No strangerId set, but attempting to process offer anyway...')
+            // Don't return, try to process
+          } else if (strangerId !== data.senderId) {
+            console.warn('Sender ID mismatch - ignoring offer')
+            return
+          }
         }
         
-        console.log('✅ Received WebRTC offer from stranger!', data.senderId)
+        console.log('✅ Processing WebRTC offer from stranger!', data.senderId)
         console.log('Offer type:', data.offer.type)
         console.log('Current chat mode:', chatMode)
         
@@ -547,9 +569,9 @@ export default function Home() {
           await new Promise(resolve => setTimeout(resolve, 200))
         }
         
-        // Handle the offer
+        // Handle the offer (pass senderId)
         if (peerConnectionRef.current && localStreamRef.current) {
-          await handleIncomingOffer(offer)
+          await handleIncomingOffer(offer, senderId)
         } else {
           console.error('Peer connection or stream not ready:', {
             hasPeer: !!peerConnectionRef.current,
@@ -629,15 +651,23 @@ export default function Home() {
         console.log('✅ Created and set local answer')
         
         const currentSocket = socketRef.current || newSocket
-        if (strangerId && currentSocket) {
+        // Use the senderId from the offer if we don't have strangerId yet
+        const targetStrangerId = strangerId || data?.senderId || pendingOfferRef.current?.senderId
+        
+        if (targetStrangerId && currentSocket) {
           currentSocket.emit('webrtc-answer', {
             answer,
-            strangerId,
+            strangerId: targetStrangerId,
             senderId: userId.current,
           })
-          console.log('✅ Sent WebRTC answer to stranger:', strangerId)
+          console.log('✅✅✅ Sent WebRTC answer to stranger:', targetStrangerId)
         } else {
-          console.error('Cannot send answer - missing strangerId or socket:', { strangerId, hasSocket: !!currentSocket })
+          console.error('❌ Cannot send answer - missing target:', { 
+            strangerId, 
+            senderId: data?.senderId,
+            pendingSenderId: pendingOfferRef.current?.senderId,
+            hasSocket: !!currentSocket 
+          })
         }
       } catch (error) {
         console.error('Error in handleIncomingOffer:', error)
