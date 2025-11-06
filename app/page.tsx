@@ -17,8 +17,9 @@ export default function Home() {
     const [isMatched, setIsMatched] = useState(false)
     const [messages, setMessages] = useState<Message[]>([])
     const [messageInput, setMessageInput] = useState('')
-    const [strangerId, setStrangerId] = useState<string | null>(null)
-    const [remoteVideoReady, setRemoteVideoReady] = useState(false)
+  const [strangerId, setStrangerId] = useState<string | null>(null)
+  const [remoteVideoReady, setRemoteVideoReady] = useState(false)
+  const [showPlayButton, setShowPlayButton] = useState(false)
 
     const userId = useRef(uuidv4())
     const localVideoRef = useRef<HTMLVideoElement>(null)
@@ -80,28 +81,21 @@ export default function Home() {
                             await remoteVideoRef.current.play()
                             console.log('✅✅✅ REMOTE VIDEO PLAYING! ✅✅✅')
                             console.log('Video dimensions:', remoteVideoRef.current.videoWidth, 'x', remoteVideoRef.current.videoHeight)
-            } catch (error) {
-              console.error('❌ Play failed:', error)
-              
-              const errorObj = error as Error
-              const errorName = errorObj.name || 'Unknown'
-              const errorMessage = errorObj.message || String(error)
-              
-              console.error('Error name:', errorName)
-              console.error('Error message:', errorMessage)
-              
-              // If autoplay policy issue, show user a message
+                        } catch (error) {
+                            console.error('❌ Play failed:', error)
+
+                            const errorObj = error as Error
+                            const errorName = errorObj.name || 'Unknown'
+                            const errorMessage = errorObj.message || String(error)
+
+                            console.error('Error name:', errorName)
+                            console.error('Error message:', errorMessage)
+
+              // If autoplay policy issue, show play button
               if (errorName === 'NotAllowedError') {
-                                console.warn('⚠️ Autoplay blocked - user interaction required')
-                                // Try again after a click
-                                document.addEventListener('click', () => {
-                                    if (remoteVideoRef.current) {
-                                        remoteVideoRef.current.play()
-                                            .then(() => console.log('✅ Play succeeded after user click'))
-                                            .catch(e => console.error('Still failed after click:', e))
-                                    }
-                                }, { once: true })
-                            }
+                console.warn('⚠️ Autoplay blocked - showing play button')
+                setShowPlayButton(true)
+              }
 
                             // Retry once after delay
                             setTimeout(() => {
