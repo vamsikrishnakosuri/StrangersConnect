@@ -7,6 +7,10 @@ const inter = Inter({ subsets: ['latin'] })
 export const metadata: Metadata = {
   title: 'Strangers Connect - Connect with People Around the World',
   description: 'A free and open source application for strangers to connect',
+  icons: {
+    icon: '/logo.png',
+    apple: '/logo.png',
+  },
 }
 
 export default function RootLayout({
@@ -20,4 +24,5 @@ export default function RootLayout({
     </html>
   )
 }
+
 

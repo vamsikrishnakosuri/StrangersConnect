@@ -1092,8 +1092,23 @@ export default function Home() {
                 {/* Modern Header with Dark Mode Toggle */}
                 <div className="flex items-center justify-between mb-8">
                     <div className="flex items-center gap-4">
-                        <div className={`w-12 h-12 rounded-2xl ${isDarkMode ? 'bg-gradient-to-br from-blue-500 to-purple-600' : 'bg-gradient-to-br from-blue-400 to-purple-500'} flex items-center justify-center shadow-lg`}>
-                            <span className="text-2xl">🎥</span>
+                        {/* Logo */}
+                        <div className="flex items-center gap-3">
+                            <img 
+                                src="/logo.png" 
+                                alt="Strangers Connect Logo" 
+                                className="h-12 w-auto object-contain"
+                                onError={(e) => {
+                                    // Fallback to gradient icon if logo not found
+                                    const target = e.target as HTMLImageElement
+                                    target.style.display = 'none'
+                                    const fallback = target.nextElementSibling as HTMLElement
+                                    if (fallback) fallback.style.display = 'flex'
+                                }}
+                            />
+                            <div className={`hidden w-12 h-12 rounded-2xl ${isDarkMode ? 'bg-gradient-to-br from-blue-500 to-purple-600' : 'bg-gradient-to-br from-blue-400 to-purple-500'} items-center justify-center shadow-lg`}>
+                                <span className="text-2xl">🎥</span>
+                            </div>
                         </div>
                         <div>
                             <h1 className={`text-2xl sm:text-3xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Strangers Connect</h1>
@@ -1545,7 +1560,25 @@ export default function Home() {
                 {!isMatched && !isSearching && (
                     <div className="text-center py-12 sm:py-20">
                         <div className={`inline-block p-6 rounded-3xl mb-8 ${isDarkMode ? 'bg-gray-800/50' : 'bg-white/50'} backdrop-blur-sm border ${isDarkMode ? 'border-gray-700' : 'border-gray-200'} shadow-2xl`}>
-                            <div className={`text-7xl mb-4 ${isDarkMode ? 'text-blue-400' : 'text-blue-500'}`}>🌐</div>
+                            {/* Logo on Homepage */}
+                            <div className="mb-6 flex justify-center">
+                                <img 
+                                    src="/logo.png" 
+                                    alt="Strangers Connect" 
+                                    className="h-32 w-auto object-contain"
+                                    onError={(e) => {
+                                        // Fallback to emoji if logo not found
+                                        const target = e.target as HTMLImageElement
+                                        target.style.display = 'none'
+                                        const fallback = target.nextElementSibling as HTMLElement
+                                        if (fallback) {
+                                            fallback.style.display = 'block'
+                                            fallback.className = `text-7xl mb-4 ${isDarkMode ? 'text-blue-400' : 'text-blue-500'}`
+                                        }
+                                    }}
+                                />
+                                <div className={`hidden text-7xl mb-4 ${isDarkMode ? 'text-blue-400' : 'text-blue-500'}`}>🌐</div>
+                            </div>
                             <h2 className={`text-3xl sm:text-4xl font-bold mb-3 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
                                 Connect with Strangers
                             </h2>
