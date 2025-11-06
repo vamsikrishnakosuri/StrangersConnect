@@ -33,6 +33,8 @@ export default function Home() {
   const localStreamRef = useRef<MediaStream | null>(null)
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null)
   const userId = useRef(uuidv4())
+  const pendingIceCandidatesRef = useRef<RTCIceCandidateInit[]>([])
+  const pendingOfferRef = useRef<{ offer: RTCSessionDescriptionInit; senderId: string } | null>(null)
 
   // Initialize WebRTC
   const initializePeerConnection = () => {
@@ -440,29 +442,54 @@ export default function Home() {
         console.log('Offer type:', data.offer.type)
         console.log('Current chat mode:', chatMode)
         
-        // Switch to video mode if not already
+        // Store offer if we need to wait for video mode
         if (chatMode !== 'video') {
-          console.log('Auto-switching to video mode...')
+          console.log('Auto-switching to video mode and storing offer...')
           setChatMode('video')
-          // Wait for state to update
+          pendingOfferRef.current = { offer: data.offer, senderId: data.senderId }
+          return // Will be processed by useEffect when video mode is active
+        }
+        
+        // Process offer immediately if already in video mode
+        await processIncomingOffer(data.offer, data.senderId)
+      } catch (error) {
+        console.error('Error handling WebRTC offer:', error)
+      }
+    })
+    
+    // Helper to process incoming offer (separated for reuse)
+    const processIncomingOffer = async (offer: RTCSessionDescriptionInit, senderId: string) => {
+      try {
+        // Wait for DOM to be ready (video element exists)
+        let retries = 0
+        while (!localVideoRef.current && retries < 10) {
           await new Promise(resolve => setTimeout(resolve, 100))
+          retries++
+        }
+        
+        if (!localVideoRef.current) {
+          console.error('localVideoRef not ready after waiting')
         }
         
         // Initialize peer connection if needed
         if (!peerConnectionRef.current) {
           console.log('Initializing peer connection for incoming offer...')
           initializePeerConnection()
+          // Give it a moment to initialize
+          await new Promise(resolve => setTimeout(resolve, 100))
         }
         
         // Start local stream if not already started
         if (!localStreamRef.current) {
           console.log('Starting local stream for incoming offer...')
           await startLocalStream()
+          // Wait for stream to be fully set up
+          await new Promise(resolve => setTimeout(resolve, 200))
         }
         
         // Handle the offer
         if (peerConnectionRef.current && localStreamRef.current) {
-          await handleIncomingOffer(data.offer)
+          await handleIncomingOffer(offer)
         } else {
           console.error('Peer connection or stream not ready:', {
             hasPeer: !!peerConnectionRef.current,
@@ -470,18 +497,18 @@ export default function Home() {
           })
         }
       } catch (error) {
-        console.error('Error handling WebRTC offer:', error)
+        console.error('Error processing incoming offer:', error)
       }
-    })
+    }
 
-    // Store ICE candidates until remote description is set
-    const pendingIceCandidates: RTCIceCandidateInit[] = []
-    
     // Function to process pending ICE candidates
     const processPendingIceCandidates = async () => {
       if (peerConnectionRef.current && peerConnectionRef.current.remoteDescription) {
-        console.log('Processing', pendingIceCandidates.length, 'pending ICE candidates')
-        for (const candidate of pendingIceCandidates) {
+        console.log('Processing', pendingIceCandidatesRef.current.length, 'pending ICE candidates')
+        const candidates = [...pendingIceCandidatesRef.current]
+        pendingIceCandidatesRef.current = [] // Clear array
+        
+        for (const candidate of candidates) {
           try {
             await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(candidate))
             console.log('Added pending ICE candidate')
@@ -489,7 +516,6 @@ export default function Home() {
             console.error('Error adding pending ICE candidate:', error)
           }
         }
-        pendingIceCandidates.length = 0 // Clear array
       }
     }
     
@@ -530,7 +556,7 @@ export default function Home() {
       
       try {
         await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(offer))
-        console.log('Set remote description successfully')
+        console.log('✅ Set remote description successfully')
         
         // Process any pending ICE candidates now that remote description is set
         await processPendingIceCandidates()
@@ -540,15 +566,17 @@ export default function Home() {
           offerToReceiveVideo: true,
         })
         await peerConnectionRef.current.setLocalDescription(answer)
-        console.log('Created and set local answer')
+        console.log('✅ Created and set local answer')
         
-        if (strangerId) {
-          newSocket.emit('webrtc-answer', {
+        if (strangerId && socket) {
+          socket.emit('webrtc-answer', {
             answer,
             strangerId,
             senderId: userId.current,
           })
-          console.log('Sent WebRTC answer to stranger')
+          console.log('✅ Sent WebRTC answer to stranger:', strangerId)
+        } else {
+          console.error('Cannot send answer - missing strangerId or socket:', { strangerId, hasSocket: !!socket })
         }
       } catch (error) {
         console.error('Error in handleIncomingOffer:', error)
@@ -588,7 +616,7 @@ export default function Home() {
           } else {
             // Store candidate to add later
             console.log('Storing ICE candidate (remote description not set yet)')
-            pendingIceCandidates.push(data.candidate)
+            pendingIceCandidatesRef.current.push(data.candidate)
           }
         } catch (error) {
           console.error('Error adding ICE candidate:', error)
