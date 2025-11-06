@@ -35,6 +35,7 @@ export default function Home() {
   const userId = useRef(uuidv4())
   const pendingIceCandidatesRef = useRef<RTCIceCandidateInit[]>([])
   const pendingOfferRef = useRef<{ offer: RTCSessionDescriptionInit; senderId: string } | null>(null)
+  const socketRef = useRef<Socket | null>(null)
 
   // Initialize WebRTC
   const initializePeerConnection = () => {
@@ -519,7 +520,7 @@ export default function Home() {
       }
     }
     
-    // Helper function to handle incoming offer
+    // Helper function to handle incoming offer (moved outside to be accessible)
     const handleIncomingOffer = async (offer: RTCSessionDescriptionInit) => {
       if (!peerConnectionRef.current) {
         console.error('Peer connection not ready')
@@ -568,15 +569,16 @@ export default function Home() {
         await peerConnectionRef.current.setLocalDescription(answer)
         console.log('✅ Created and set local answer')
         
-        if (strangerId && socket) {
-          socket.emit('webrtc-answer', {
+        const currentSocket = socketRef.current || newSocket
+        if (strangerId && currentSocket) {
+          currentSocket.emit('webrtc-answer', {
             answer,
             strangerId,
             senderId: userId.current,
           })
           console.log('✅ Sent WebRTC answer to stranger:', strangerId)
         } else {
-          console.error('Cannot send answer - missing strangerId or socket:', { strangerId, hasSocket: !!socket })
+          console.error('Cannot send answer - missing strangerId or socket:', { strangerId, hasSocket: !!currentSocket })
         }
       } catch (error) {
         console.error('Error in handleIncomingOffer:', error)
@@ -624,6 +626,7 @@ export default function Home() {
       }
     })
 
+    socketRef.current = newSocket
     setSocket(newSocket)
 
     return () => {
@@ -638,6 +641,82 @@ export default function Home() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
+
+  // Process pending offer when video mode is active
+  useEffect(() => {
+    if (chatMode === 'video' && pendingOfferRef.current && isMatched && strangerId) {
+      const pending = pendingOfferRef.current
+      pendingOfferRef.current = null
+      
+      console.log('🔄 Processing pending offer now that video mode is active...')
+      
+      // Wait a bit for DOM to be ready, then process
+      const processOffer = async () => {
+        // Wait for video element to exist
+        let retries = 0
+        while (!localVideoRef.current && retries < 15) {
+          await new Promise(resolve => setTimeout(resolve, 100))
+          retries++
+        }
+        
+        if (!peerConnectionRef.current) {
+          console.log('Initializing peer connection for pending offer...')
+          initializePeerConnection()
+          await new Promise(resolve => setTimeout(resolve, 100))
+        }
+        
+        if (!localStreamRef.current) {
+          console.log('Starting local stream for pending offer...')
+          await startLocalStream()
+          await new Promise(resolve => setTimeout(resolve, 200))
+        }
+        
+        if (peerConnectionRef.current && localStreamRef.current) {
+          // Process the offer by creating answer
+          try {
+            await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(pending.offer))
+            console.log('✅ Set remote description from pending offer')
+            
+            // Process pending ICE candidates
+            if (peerConnectionRef.current.remoteDescription) {
+              const candidates = [...pendingIceCandidatesRef.current]
+              pendingIceCandidatesRef.current = []
+              for (const candidate of candidates) {
+                try {
+                  await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(candidate))
+                  console.log('Added pending ICE candidate')
+                } catch (error) {
+                  console.error('Error adding pending ICE candidate:', error)
+                }
+              }
+            }
+            
+            const answer = await peerConnectionRef.current.createAnswer({
+              offerToReceiveAudio: true,
+              offerToReceiveVideo: true,
+            })
+            await peerConnectionRef.current.setLocalDescription(answer)
+            console.log('✅ Created and set local answer from pending offer')
+            
+            if (strangerId && socketRef.current) {
+              socketRef.current.emit('webrtc-answer', {
+                answer,
+                strangerId,
+                senderId: userId.current,
+              })
+              console.log('✅ Sent WebRTC answer to stranger:', strangerId)
+            }
+          } catch (error) {
+            console.error('Error processing pending offer:', error)
+          }
+        }
+      }
+      
+      processOffer().catch(error => {
+        console.error('Error in processOffer:', error)
+      })
+    }
+  }, [chatMode, isMatched, strangerId])
 
   const findStranger = () => {
     if (socket && isConnected) {
