@@ -49,13 +49,25 @@ export default function Home() {
 
                 // Check if video has dimensions (means it's loaded)
                 if (video.videoWidth > 0 && video.videoHeight > 0) {
-                    setRemoteVideoReady(true)
-                    console.log('✅✅✅ Video has dimensions, forcing visibility!', {
-                        width: video.videoWidth,
-                        height: video.videoHeight,
-                        readyState: video.readyState,
-                        paused: video.paused
-                    })
+                    // CRITICAL: Check if dimensions are suspiciously small (2x2 = no real video)
+                    if (video.videoWidth <= 2 && video.videoHeight <= 2) {
+                        console.error('⚠️⚠️⚠️ VIDEO HAS NO CONTENT! Dimensions:', video.videoWidth, 'x', video.videoHeight)
+                        console.error('Remote peer camera is NOT sending video data!')
+                        console.error('Check remote peer:', {
+                            hasVideoTracks: stream.getVideoTracks().length > 0,
+                            videoTrackEnabled: stream.getVideoTracks()[0]?.enabled,
+                            videoTrackReadyState: stream.getVideoTracks()[0]?.readyState,
+                            videoTrackMuted: stream.getVideoTracks()[0]?.muted
+                        })
+                    } else {
+                        setRemoteVideoReady(true)
+                        console.log('✅✅✅ Video has dimensions, forcing visibility!', {
+                            width: video.videoWidth,
+                            height: video.videoHeight,
+                            readyState: video.readyState,
+                            paused: video.paused
+                        })
+                    }
                 }
 
                 // Try to play if paused
@@ -152,10 +164,41 @@ export default function Home() {
 
                 // Monitor track state changes
                 videoTrack.onended = () => {
-                    console.error('❌ Remote video track ended!')
+                    console.error('❌❌❌ Remote video track ended! This means the remote peer stopped sending video!')
+                    console.error('Track details:', {
+                        id: videoTrack.id,
+                        enabled: videoTrack.enabled,
+                        readyState: videoTrack.readyState,
+                        muted: videoTrack.muted
+                    })
+                    // Try to recover by checking if there are other tracks
+                    if (event.streams[0]) {
+                        const otherTracks = event.streams[0].getVideoTracks()
+                        console.log('Other video tracks in stream:', otherTracks.length)
+                        if (otherTracks.length > 0 && otherTracks[0] !== videoTrack) {
+                            console.log('🔄 Trying to use another video track...')
+                            // The stream will handle track replacement automatically
+                        }
+                    }
                 }
                 videoTrack.onmute = () => {
-                    console.warn('⚠️ Remote video track muted!')
+                    console.warn('⚠️⚠️⚠️ Remote video track muted! This means the remote peer muted their camera!')
+                    console.warn('Track details:', {
+                        id: videoTrack.id,
+                        enabled: videoTrack.enabled,
+                        readyState: videoTrack.readyState
+                    })
+                    // Check if this is a temporary mute or permanent
+                    setTimeout(() => {
+                        if (videoTrack.muted && remoteVideoRef.current) {
+                            console.warn('⚠️ Track still muted after 2 seconds - remote peer may have disabled camera')
+                            const width = remoteVideoRef.current.videoWidth || 0
+                            const height = remoteVideoRef.current.videoHeight || 0
+                            if (width <= 2 && height <= 2) {
+                                console.error('❌ Video has no content - remote peer camera is not working!')
+                            }
+                        }
+                    }, 2000)
                 }
                 videoTrack.onunmute = () => {
                     console.log('✅ Remote video track unmuted!')
@@ -213,7 +256,7 @@ export default function Home() {
 
                     // NOW set the stream
                     remoteVideoRef.current.srcObject = event.streams[0]
-                    
+
                     // CRITICAL: Update state so opacity calculation works during render
                     setHasRemoteStream(true)
 
@@ -261,7 +304,21 @@ export default function Home() {
                         remoteVideoRef.current.play()
                             .then(() => {
                                 console.log('✅✅✅ REMOTE VIDEO PLAYING! ✅✅✅')
-                                console.log('Video dimensions:', remoteVideoRef.current?.videoWidth, 'x', remoteVideoRef.current?.videoHeight)
+                                const width = remoteVideoRef.current?.videoWidth || 0
+                                const height = remoteVideoRef.current?.videoHeight || 0
+                                console.log('Video dimensions:', width, 'x', height)
+                                
+                                // CRITICAL: Check if video has actual dimensions
+                                if (width <= 2 && height <= 2) {
+                                    console.error('⚠️⚠️⚠️ VIDEO HAS NO CONTENT! Dimensions are only', width, 'x', height)
+                                    console.error('This means the remote peer is not sending video data!')
+                                    console.error('Possible causes:')
+                                    console.error('1. Remote peer camera not working')
+                                    console.error('2. Remote peer camera permission denied')
+                                    console.error('3. WebRTC connection issue')
+                                    console.error('4. Remote video track ended or muted')
+                                }
+                                
                                 setShowPlayButton(false)
                             })
                             .catch((error) => {
