@@ -427,6 +427,53 @@ export default function Home() {
       }
     })
 
+    // WebRTC signaling handlers
+    newSocket.on('webrtc-offer', async (data: { offer: RTCSessionDescriptionInit; senderId: string }) => {
+      try {
+        // If stranger sent an offer, switch to video mode and accept
+        if (!isMatched) {
+          console.warn('Received offer but not matched yet')
+          return
+        }
+        
+        console.log('✅ Received WebRTC offer from stranger!', data.senderId)
+        console.log('Offer type:', data.offer.type)
+        console.log('Current chat mode:', chatMode)
+        
+        // Switch to video mode if not already
+        if (chatMode !== 'video') {
+          console.log('Auto-switching to video mode...')
+          setChatMode('video')
+          // Wait for state to update
+          await new Promise(resolve => setTimeout(resolve, 100))
+        }
+        
+        // Initialize peer connection if needed
+        if (!peerConnectionRef.current) {
+          console.log('Initializing peer connection for incoming offer...')
+          initializePeerConnection()
+        }
+        
+        // Start local stream if not already started
+        if (!localStreamRef.current) {
+          console.log('Starting local stream for incoming offer...')
+          await startLocalStream()
+        }
+        
+        // Handle the offer
+        if (peerConnectionRef.current && localStreamRef.current) {
+          await handleIncomingOffer(data.offer)
+        } else {
+          console.error('Peer connection or stream not ready:', {
+            hasPeer: !!peerConnectionRef.current,
+            hasStream: !!localStreamRef.current
+          })
+        }
+      } catch (error) {
+        console.error('Error handling WebRTC offer:', error)
+      }
+    })
+
     // Store ICE candidates until remote description is set
     const pendingIceCandidates: RTCIceCandidateInit[] = []
     
