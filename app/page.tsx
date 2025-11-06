@@ -21,6 +21,7 @@ export default function Home() {
     const [remoteVideoReady, setRemoteVideoReady] = useState(false)
     const [hasRemoteStream, setHasRemoteStream] = useState(false) // Track when srcObject is set
     const [showPlayButton, setShowPlayButton] = useState(false)
+    const [isDarkMode, setIsDarkMode] = useState(true) // Dark mode by default
 
     // Video swap state - true means local is main, false means remote is main
     const [isLocalMain, setIsLocalMain] = useState(false)
@@ -56,10 +57,10 @@ export default function Home() {
         const keyMaterial = `${user1Id}:${user2Id}` // Combined string
         const encoder = new TextEncoder()
         const data = encoder.encode(keyMaterial)
-        
+
         // Hash the combined string to get consistent key material
         const hashBuffer = await crypto.subtle.digest('SHA-256', data)
-        
+
         // Import the key for AES-GCM encryption
         const key = await crypto.subtle.importKey(
             'raw',
@@ -68,29 +69,29 @@ export default function Home() {
             false,
             ['encrypt', 'decrypt']
         )
-        
+
         return key
     }
 
     const encryptMessage = async (text: string, key: CryptoKey): Promise<string> => {
         const encoder = new TextEncoder()
         const data = encoder.encode(text)
-        
+
         // Generate a random IV (initialization vector) for each message
         const iv = crypto.getRandomValues(new Uint8Array(12))
-        
+
         // Encrypt the message
         const encryptedData = await crypto.subtle.encrypt(
             { name: 'AES-GCM', iv: iv },
             key,
             data
         )
-        
+
         // Combine IV and encrypted data, then encode as base64
         const combined = new Uint8Array(iv.length + encryptedData.byteLength)
         combined.set(iv)
         combined.set(new Uint8Array(encryptedData), iv.length)
-        
+
         // Convert to base64 for transmission
         const binaryString = Array.from(combined, byte => String.fromCharCode(byte)).join('')
         return btoa(binaryString)
@@ -100,18 +101,18 @@ export default function Home() {
         try {
             // Decode from base64
             const combined = Uint8Array.from(atob(encryptedText), c => c.charCodeAt(0))
-            
+
             // Extract IV (first 12 bytes) and encrypted data (rest)
             const iv = combined.slice(0, 12)
             const encryptedData = combined.slice(12)
-            
+
             // Decrypt
             const decryptedData = await crypto.subtle.decrypt(
                 { name: 'AES-GCM', iv: iv },
                 key,
                 encryptedData
             )
-            
+
             // Convert back to string
             const decoder = new TextDecoder()
             return decoder.decode(decryptedData)
@@ -740,13 +741,13 @@ export default function Home() {
             setIsMatched(true)
             setStrangerId(data.strangerId)
             strangerIdRef.current = data.strangerId // Update ref immediately
-            
+
             // Generate shared encryption key for E2E encryption
             // Use deterministic order (smaller ID first) so both users get same key
             const sortedIds = [userId.current, data.strangerId].sort()
             encryptionKeyRef.current = await generateEncryptionKey(sortedIds[0], sortedIds[1])
             console.log('🔐 End-to-end encryption key generated')
-            
+
             setMessages([{ id: uuidv4(), text: '🎥 Starting video...', sender: 'stranger' }])
 
             // ALWAYS start video for BOTH users - no matter who creates offer
@@ -1058,7 +1059,7 @@ export default function Home() {
     const sendMessage = async () => {
         if (messageInput.trim() && socket && strangerId) {
             const messageText = messageInput.trim()
-            
+
             // Encrypt message before sending (if encryption key is available)
             let messageToSend = messageText
             if (encryptionKeyRef.current) {
@@ -1071,37 +1072,66 @@ export default function Home() {
                     messageToSend = messageText
                 }
             }
-            
+
             // Show message immediately (will be decrypted on other end)
             setMessages((prev) => [...prev, { id: uuidv4(), text: messageText, sender: 'me' }])
-            
+
             // Send encrypted message through server (server can't read it)
-            socket.emit('send-message', { 
-                text: messageToSend, 
+            socket.emit('send-message', {
+                text: messageToSend,
                 to: strangerId,
-                encrypted: !!encryptionKeyRef.current 
+                encrypted: !!encryptionKeyRef.current
             })
             setMessageInput('')
         }
     }
 
     return (
-        <div className="min-h-screen bg-gray-900 text-white p-4">
-            <div className="max-w-6xl mx-auto">
-                {/* Header */}
-                <div className="text-center mb-6">
-                    <h1 className="text-4xl font-bold mb-2">🎥 Strangers Connect</h1>
-                    <p className="text-gray-400">Connect with strangers via video • Free & Open Source</p>
-                    <div className="mt-2">
-                        <span className={`px-3 py-1 rounded-full text-sm ${isConnected ? 'bg-green-600' : 'bg-red-600'}`}>
-                            {isConnected ? '● Online' : '● Offline'}
-                        </span>
+        <div className={`min-h-screen transition-colors duration-300 ${isDarkMode ? 'bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900' : 'bg-gradient-to-br from-gray-50 via-white to-gray-100'} ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+                {/* Modern Header with Dark Mode Toggle */}
+                <div className="flex items-center justify-between mb-8">
+                    <div className="flex items-center gap-4">
+                        <div className={`w-12 h-12 rounded-2xl ${isDarkMode ? 'bg-gradient-to-br from-blue-500 to-purple-600' : 'bg-gradient-to-br from-blue-400 to-purple-500'} flex items-center justify-center shadow-lg`}>
+                            <span className="text-2xl">🎥</span>
+                        </div>
+                        <div>
+                            <h1 className={`text-2xl sm:text-3xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Strangers Connect</h1>
+                            <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Connect • Chat • Video</p>
+                        </div>
+                    </div>
+                    
+                    <div className="flex items-center gap-4">
+                        {/* Connection Status */}
+                        <div className={`flex items-center gap-2 px-4 py-2 rounded-full ${isDarkMode ? 'bg-gray-800' : 'bg-gray-100'} ${isDarkMode ? 'border border-gray-700' : 'border border-gray-200'}`}>
+                            <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'} animate-pulse`}></div>
+                            <span className={`text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                {isConnected ? 'Online' : 'Offline'}
+                            </span>
+                        </div>
+                        
+                        {/* Dark Mode Toggle */}
+                        <button
+                            onClick={() => setIsDarkMode(!isDarkMode)}
+                            className={`p-3 rounded-xl transition-all duration-300 ${isDarkMode ? 'bg-gray-800 hover:bg-gray-700' : 'bg-gray-100 hover:bg-gray-200'} ${isDarkMode ? 'border border-gray-700' : 'border border-gray-200'}`}
+                            title={isDarkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+                        >
+                            {isDarkMode ? (
+                                <svg className="w-5 h-5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fillRule="evenodd" d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z" clipRule="evenodd" />
+                                </svg>
+                            ) : (
+                                <svg className="w-5 h-5 text-gray-700" fill="currentColor" viewBox="0 0 20 20">
+                                    <path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z" />
+                                </svg>
+                            )}
+                        </button>
                     </div>
                 </div>
 
                 {/* Video Container - ALWAYS in DOM, never display:none (breaks MediaStream loading) */}
                 <div
-                    className="mb-4 bg-black rounded-lg relative cursor-pointer"
+                    className={`mb-6 rounded-2xl relative cursor-pointer shadow-2xl overflow-hidden transition-all duration-300 ${isDarkMode ? 'bg-black border border-gray-800' : 'bg-black border border-gray-200'}`}
                     style={{
                         aspectRatio: '16/9',
                         display: 'block', // Always block - never none (MediaStreams need visible parent)
@@ -1127,7 +1157,7 @@ export default function Home() {
                     {/* CRITICAL: Key prop prevents React reusing, always rendered */}
                     {/* Swaps between main view and PIP based on isLocalMain */}
                     <div
-                        className="absolute bg-black rounded-lg overflow-hidden border-2 border-white shadow-lg transition-all duration-300 ease-in-out cursor-grab"
+                        className={`absolute overflow-hidden transition-all duration-300 ease-in-out cursor-grab rounded-2xl ${isDarkMode ? 'border-2 border-white/20' : 'border-2 border-gray-300'} shadow-2xl`}
                         style={{
                             opacity: isMatched ? '1' : '0.01',
                             display: isMatched ? 'block' : 'none',
@@ -1296,7 +1326,7 @@ export default function Home() {
 
                     {/* Play Button - Shown when autoplay is blocked */}
                     {showPlayButton && (
-                        <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-75 z-20">
+                        <div className={`absolute inset-0 flex items-center justify-center backdrop-blur-sm z-20 ${isDarkMode ? 'bg-black/80' : 'bg-black/70'}`}>
                             <button
                                 onClick={(e) => {
                                     e.stopPropagation()
@@ -1321,10 +1351,10 @@ export default function Home() {
                         const hasSrcObject = remoteVideoRef.current?.srcObject !== null && remoteVideoRef.current?.srcObject !== undefined
                         return !hasSrcObject && !remoteVideoReady && isMatched
                     })() && (
-                            <div className="absolute inset-0 flex items-center justify-center bg-gray-800 z-10">
+                            <div className={`absolute inset-0 flex items-center justify-center z-10 ${isDarkMode ? 'bg-gray-900/80' : 'bg-gray-100/80'} backdrop-blur-sm`}>
                                 <div className="text-center">
-                                    <div className="text-6xl mb-4">👤</div>
-                                    <p>Waiting for stranger's video...</p>
+                                    <div className={`text-6xl mb-4 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>👤</div>
+                                    <p className={isDarkMode ? 'text-gray-300' : 'text-gray-600'}>Waiting for stranger's video...</p>
                                 </div>
                             </div>
                         )}
@@ -1332,7 +1362,7 @@ export default function Home() {
                     {/* Local Video - Swaps between main view and PIP based on isLocalMain */}
                     {isMatched && (
                         <div
-                            className="absolute bg-black rounded-lg overflow-hidden border-2 border-white shadow-lg transition-all duration-300 ease-in-out cursor-grab"
+                            className={`absolute overflow-hidden transition-all duration-300 ease-in-out cursor-grab rounded-2xl ${isDarkMode ? 'border-2 border-white/20' : 'border-2 border-gray-300'} shadow-2xl`}
                             style={{
                                 // If isLocalMain is true, local is main (full screen)
                                 // If isLocalMain is false, local is PIP (small, bottom-right)
@@ -1508,34 +1538,87 @@ export default function Home() {
                     </div>
                 )}
 
+                {/* Homepage - Modern & Stylish */}
+                {!isMatched && !isSearching && (
+                    <div className="text-center py-12 sm:py-20">
+                        <div className={`inline-block p-6 rounded-3xl mb-8 ${isDarkMode ? 'bg-gray-800/50' : 'bg-white/50'} backdrop-blur-sm border ${isDarkMode ? 'border-gray-700' : 'border-gray-200'} shadow-2xl`}>
+                            <div className={`text-7xl mb-4 ${isDarkMode ? 'text-blue-400' : 'text-blue-500'}`}>🌐</div>
+                            <h2 className={`text-3xl sm:text-4xl font-bold mb-3 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                                Connect with Strangers
+                            </h2>
+                            <p className={`text-lg ${isDarkMode ? 'text-gray-400' : 'text-gray-600'} mb-8 max-w-md mx-auto`}>
+                                Meet new people from around the world. Video chat, text messages, and end-to-end encryption.
+                            </p>
+                            <button
+                                onClick={findStranger}
+                                disabled={!isConnected}
+                                className={`px-8 py-4 rounded-xl font-semibold text-lg transition-all duration-200 shadow-xl hover:shadow-2xl transform hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${
+                                    isConnected
+                                        ? isDarkMode 
+                                            ? 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white' 
+                                            : 'bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-400 hover:to-purple-400 text-white'
+                                        : `${isDarkMode ? 'bg-gray-700 text-gray-500' : 'bg-gray-200 text-gray-400'}`
+                                }`}
+                            >
+                                {isConnected ? '🎯 Find Stranger' : 'Connecting...'}
+                            </button>
+                        </div>
+                        
+                        {/* Features Grid */}
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mt-12 max-w-4xl mx-auto">
+                            <div className={`p-6 rounded-2xl ${isDarkMode ? 'bg-gray-800/50 border border-gray-700' : 'bg-white/50 border border-gray-200'} backdrop-blur-sm transition-all duration-200 hover:scale-105`}>
+                                <div className="text-4xl mb-3">🔒</div>
+                                <h3 className={`font-semibold mb-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>End-to-End Encrypted</h3>
+                                <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>Your messages are private</p>
+                            </div>
+                            <div className={`p-6 rounded-2xl ${isDarkMode ? 'bg-gray-800/50 border border-gray-700' : 'bg-white/50 border border-gray-200'} backdrop-blur-sm transition-all duration-200 hover:scale-105`}>
+                                <div className="text-4xl mb-3">🎥</div>
+                                <h3 className={`font-semibold mb-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>HD Video Chat</h3>
+                                <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>Crystal clear video calls</p>
+                            </div>
+                            <div className={`p-6 rounded-2xl ${isDarkMode ? 'bg-gray-800/50 border border-gray-700' : 'bg-white/50 border border-gray-200'} backdrop-blur-sm transition-all duration-200 hover:scale-105`}>
+                                <div className="text-4xl mb-3">🌍</div>
+                                <h3 className={`font-semibold mb-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Global Reach</h3>
+                                <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>Connect worldwide</p>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 {/* Controls */}
                 <div className="flex justify-center gap-4">
-                    {!isMatched && !isSearching && (
-                        <button
-                            onClick={findStranger}
-                            disabled={!isConnected}
-                            className="px-6 py-3 bg-blue-600 rounded-lg font-semibold hover:bg-blue-700 disabled:bg-gray-600"
-                        >
-                            Find Stranger
-                        </button>
-                    )}
-
                     {isSearching && (
-                        <div className="px-6 py-3 bg-gray-700 rounded-lg font-semibold">
-                            Searching...
+                        <div className={`flex items-center gap-3 px-8 py-4 rounded-xl font-semibold ${isDarkMode ? 'bg-gray-800/80 border border-gray-700' : 'bg-white/80 border border-gray-200'} backdrop-blur-sm shadow-lg`}>
+                            <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                            <span className={isDarkMode ? 'text-gray-200' : 'text-gray-800'}>Searching for stranger...</span>
                         </div>
                     )}
 
                     {isMatched && (
-                        <button onClick={disconnect} className="px-6 py-3 bg-red-600 rounded-lg font-semibold hover:bg-red-700">
+                        <button 
+                            onClick={disconnect} 
+                            className={`px-8 py-4 rounded-xl font-semibold transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-105 active:scale-95 ${
+                                isDarkMode 
+                                    ? 'bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white' 
+                                    : 'bg-gradient-to-r from-red-500 to-red-600 hover:from-red-400 hover:to-red-500 text-white'
+                            }`}
+                        >
                             Disconnect
                         </button>
                     )}
                 </div>
 
                 {/* Footer */}
-                <div className="mt-8 text-center text-sm text-gray-400">
-                    Made with ❤️ • <a href="https://github.com/vamsikrishnakosuri/StrangersConnect" className="text-blue-400 hover:underline">Open Source</a>
+                <div className={`mt-12 text-center ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                    <p className="text-sm">
+                        Made with <span className="text-red-500">❤️</span> •{' '}
+                        <a 
+                            href="https://github.com/vamsikrishnakosuri/StrangersConnect" 
+                            className={`hover:underline transition-all ${isDarkMode ? 'text-blue-400 hover:text-blue-300' : 'text-blue-600 hover:text-blue-700'}`}
+                        >
+                            Open Source
+                        </a>
+                    </p>
                 </div>
             </div>
         </div>
