@@ -22,21 +22,8 @@ export default function Home() {
     const [hasRemoteStream, setHasRemoteStream] = useState(false) // Track when srcObject is set
     const [showPlayButton, setShowPlayButton] = useState(false)
 
-    // Video controls state
-    const [remoteVideoZoom, setRemoteVideoZoom] = useState(1) // Zoom level for remote video
-    const [remoteVideoMinimized, setRemoteVideoMinimized] = useState(false)
-    const [remoteVideoCrop, setRemoteVideoCrop] = useState({ x: 0, y: 0 }) // Crop/pan position
-    const [remoteVideoDragging, setRemoteVideoDragging] = useState(false)
-    const [remoteVideoDragStart, setRemoteVideoDragStart] = useState({ x: 0, y: 0 })
-
-    const [localVideoZoom, setLocalVideoZoom] = useState(1) // Zoom level for local video
-    const [localVideoMinimized, setLocalVideoMinimized] = useState(false)
-    const [localVideoCrop, setLocalVideoCrop] = useState({ x: 0, y: 0 }) // Crop/pan position
-    const [localVideoDragging, setLocalVideoDragging] = useState(false)
-    const [localVideoDragStart, setLocalVideoDragStart] = useState({ x: 0, y: 0 })
-
-    const [showRemoteControls, setShowRemoteControls] = useState(false)
-    const [showLocalControls, setShowLocalControls] = useState(false)
+    // Video swap state - true means local is main, false means remote is main
+    const [isLocalMain, setIsLocalMain] = useState(false)
 
     const userId = useRef(uuidv4())
     const localVideoRef = useRef<HTMLVideoElement>(null)
@@ -1011,42 +998,29 @@ export default function Home() {
                 >
                     {/* Remote Video - ALWAYS in DOM, NEVER unmounted, NEVER conditionally rendered */}
                     {/* CRITICAL: Key prop prevents React reusing, always rendered */}
-                    {/* Z-INDEX: 15 (above placeholder z-10, below local PIP z-20 and play button z-20) */}
+                    {/* Swaps between main view and PIP based on isLocalMain */}
                     <div
-                        className="absolute inset-0 z-15"
+                        className="absolute bg-black rounded-lg overflow-hidden border-2 border-white shadow-lg transition-all duration-300 ease-in-out cursor-pointer"
                         style={{
                             opacity: isMatched ? '1' : '0.01',
-                            display: remoteVideoMinimized ? 'none' : 'block',
-                            cursor: remoteVideoDragging ? 'grabbing' : 'grab',
-                            transform: `scale(${remoteVideoZoom}) translate(${remoteVideoCrop.x}px, ${remoteVideoCrop.y}px)`,
-                            transition: remoteVideoDragging ? 'none' : 'transform 0.2s ease-out',
-                            overflow: 'hidden',
-                            width: '100%',
-                            height: '100%'
+                            display: isMatched ? 'block' : 'none',
+                            // If isLocalMain is true, remote becomes PIP (small, bottom-right)
+                            // If isLocalMain is false, remote is main (full screen)
+                            width: isLocalMain ? '192px' : '100%',
+                            height: isLocalMain ? '144px' : '100%',
+                            top: isLocalMain ? 'auto' : '0',
+                            left: isLocalMain ? 'auto' : '0',
+                            right: isLocalMain ? '16px' : '0',
+                            bottom: isLocalMain ? '16px' : '0',
+                            zIndex: isLocalMain ? 20 : 15,
+                            pointerEvents: 'auto'
                         }}
-                        onMouseDown={(e) => {
-                            if (e.button === 0 && remoteVideoZoom > 1) {
-                                setRemoteVideoDragging(true)
-                                setRemoteVideoDragStart({
-                                    x: e.clientX - remoteVideoCrop.x,
-                                    y: e.clientY - remoteVideoCrop.y
-                                })
+                        onClick={() => {
+                            // Clicking remote video makes it main (if it's currently PIP)
+                            if (isLocalMain) {
+                                setIsLocalMain(false)
                             }
                         }}
-                        onMouseMove={(e) => {
-                            if (remoteVideoDragging && remoteVideoZoom > 1) {
-                                setRemoteVideoCrop({
-                                    x: e.clientX - remoteVideoDragStart.x,
-                                    y: e.clientY - remoteVideoDragStart.y
-                                })
-                            }
-                        }}
-                        onMouseUp={() => setRemoteVideoDragging(false)}
-                        onMouseLeave={() => {
-                            setRemoteVideoDragging(false)
-                            setShowRemoteControls(false)
-                        }}
-                        onMouseEnter={() => setShowRemoteControls(true)}
                     >
                         <video
                             key="remote-video"
@@ -1059,16 +1033,11 @@ export default function Home() {
                                 width: '100%',
                                 height: '100%',
                                 display: 'block',
-                                position: 'absolute',
-                                top: 0,
-                                left: 0,
-                                right: 0,
-                                bottom: 0,
-                                pointerEvents: remoteVideoDragging ? 'none' : 'auto',
+                                pointerEvents: 'none', // Don't interfere with click
                                 visibility: 'visible',
                                 objectFit: 'cover',
                                 objectPosition: 'center'
-                            }}
+                        }}
                         onLoadedMetadata={() => {
                             console.log('🎥 Video metadata loaded in DOM')
                             console.log('📊 Video element state:', {
@@ -1089,43 +1058,6 @@ export default function Home() {
                             console.error('Video element:', remoteVideoRef.current)
                         }}
                     />
-                        
-                        {/* Remote Video Controls */}
-                        {showRemoteControls && isMatched && (
-                            <div className="absolute top-4 right-4 bg-black bg-opacity-70 rounded-lg p-2 flex gap-2 z-30">
-                                <button
-                                    onClick={() => setRemoteVideoZoom(Math.max(1, remoteVideoZoom - 0.25))}
-                                    className="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded text-white"
-                                    title="Zoom Out"
-                                >
-                                    ➖
-                                </button>
-                                <button
-                                    onClick={() => setRemoteVideoZoom(Math.min(3, remoteVideoZoom + 0.25))}
-                                    className="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded text-white"
-                                    title="Zoom In"
-                                >
-                                    ➕
-                                </button>
-                                <button
-                                    onClick={() => {
-                                        setRemoteVideoCrop({ x: 0, y: 0 })
-                                        setRemoteVideoZoom(1)
-                                    }}
-                                    className="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded text-white"
-                                    title="Reset"
-                                >
-                                    🔄
-                                </button>
-                                <button
-                                    onClick={() => setRemoteVideoMinimized(!remoteVideoMinimized)}
-                                    className="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded text-white"
-                                    title={remoteVideoMinimized ? "Maximize" : "Minimize"}
-                                >
-                                    {remoteVideoMinimized ? "⬜" : "➖"}
-                                </button>
-                            </div>
-                        )}
                     </div>
 
                     {/* Play Button - Shown when autoplay is blocked */}
@@ -1163,40 +1095,28 @@ export default function Home() {
                             </div>
                         )}
 
-                    {/* Local Video (PIP) - Always show when matched */}
-                    {isMatched && !localVideoMinimized && (
+                    {/* Local Video - Swaps between main view and PIP based on isLocalMain */}
+                    {isMatched && (
                         <div
-                            className="absolute bottom-4 right-4 rounded-lg overflow-hidden border-2 border-white shadow-lg bg-black z-20"
+                            className="absolute bg-black rounded-lg overflow-hidden border-2 border-white shadow-lg transition-all duration-300 ease-in-out cursor-pointer"
                             style={{
-                                width: `${192 * localVideoZoom}px`,
-                                height: `${144 * localVideoZoom}px`,
-                                cursor: localVideoDragging ? 'grabbing' : 'grab',
-                                transform: `translate(${localVideoCrop.x}px, ${localVideoCrop.y}px)`,
-                                transition: localVideoDragging ? 'none' : 'transform 0.2s ease-out'
+                                // If isLocalMain is true, local is main (full screen)
+                                // If isLocalMain is false, local is PIP (small, bottom-right)
+                                width: isLocalMain ? '100%' : '192px',
+                                height: isLocalMain ? '100%' : '144px',
+                                top: isLocalMain ? '0' : 'auto',
+                                left: isLocalMain ? '0' : 'auto',
+                                right: isLocalMain ? '0' : '16px',
+                                bottom: isLocalMain ? '0' : '16px',
+                                zIndex: isLocalMain ? 15 : 20,
+                                pointerEvents: 'auto'
                             }}
-                            onMouseDown={(e) => {
-                                if (e.button === 0) {
-                                    setLocalVideoDragging(true)
-                                    setLocalVideoDragStart({
-                                        x: e.clientX - localVideoCrop.x,
-                                        y: e.clientY - localVideoCrop.y
-                                    })
+                            onClick={() => {
+                                // Clicking local video makes it main (if it's currently PIP)
+                                if (!isLocalMain) {
+                                    setIsLocalMain(true)
                                 }
                             }}
-                            onMouseMove={(e) => {
-                                if (localVideoDragging) {
-                                    setLocalVideoCrop({
-                                        x: e.clientX - localVideoDragStart.x,
-                                        y: e.clientY - localVideoDragStart.y
-                                    })
-                                }
-                            }}
-                            onMouseUp={() => setLocalVideoDragging(false)}
-                            onMouseLeave={() => {
-                                setLocalVideoDragging(false)
-                                setShowLocalControls(false)
-                            }}
-                            onMouseEnter={() => setShowLocalControls(true)}
                         >
                             <video
                                 ref={localVideoRef}
@@ -1207,58 +1127,12 @@ export default function Home() {
                                 style={{
                                     transform: 'scaleX(-1)',
                                     display: 'block',
-                                    pointerEvents: localVideoDragging ? 'none' : 'auto'
+                                    pointerEvents: 'none', // Don't interfere with click
+                                    objectFit: 'cover',
+                                    objectPosition: 'center'
                                 }}
                             />
-                            
-                            {/* Local Video Controls */}
-                            {showLocalControls && (
-                                <div className="absolute top-2 right-2 bg-black bg-opacity-70 rounded p-1 flex gap-1 z-30">
-                                    <button
-                                        onClick={() => setLocalVideoZoom(Math.max(0.5, localVideoZoom - 0.25))}
-                                        className="px-2 py-1 bg-gray-700 hover:bg-gray-600 rounded text-white text-xs"
-                                        title="Zoom Out"
-                                    >
-                                        ➖
-                                    </button>
-                                    <button
-                                        onClick={() => setLocalVideoZoom(Math.min(2, localVideoZoom + 0.25))}
-                                        className="px-2 py-1 bg-gray-700 hover:bg-gray-600 rounded text-white text-xs"
-                                        title="Zoom In"
-                                    >
-                                        ➕
-                                    </button>
-                                    <button
-                                        onClick={() => {
-                                            setLocalVideoCrop({ x: 0, y: 0 })
-                                            setLocalVideoZoom(1)
-                                        }}
-                                        className="px-2 py-1 bg-gray-700 hover:bg-gray-600 rounded text-white text-xs"
-                                        title="Reset"
-                                    >
-                                        🔄
-                                    </button>
-                                    <button
-                                        onClick={() => setLocalVideoMinimized(true)}
-                                        className="px-2 py-1 bg-gray-700 hover:bg-gray-600 rounded text-white text-xs"
-                                        title="Minimize"
-                                    >
-                                        ➖
-                                    </button>
-                                </div>
-                            )}
                         </div>
-                    )}
-                    
-                    {/* Minimized Local Video Button */}
-                    {isMatched && localVideoMinimized && (
-                        <button
-                            onClick={() => setLocalVideoMinimized(false)}
-                            className="absolute bottom-4 right-4 w-16 h-16 rounded-full bg-blue-600 hover:bg-blue-700 border-2 border-white shadow-lg z-20 flex items-center justify-center text-white"
-                            title="Show My Video"
-                        >
-                            📹
-                        </button>
                     )}
                 </div>
 
