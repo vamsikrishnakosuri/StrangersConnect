@@ -824,6 +824,20 @@ export default function Home() {
                     newSocket.emit('webrtc-answer', { answer, to: data.from })
                     console.log('📤 Sent answer to:', data.from)
 
+                    // CRITICAL: Apply any queued ICE candidates that arrived before peer connection was ready
+                    if (pendingReceivedIceCandidatesRef.current.length > 0) {
+                        console.log(`📥 Applying ${pendingReceivedIceCandidatesRef.current.length} queued received ICE candidates after setting remote description`)
+                        for (const candidate of pendingReceivedIceCandidatesRef.current) {
+                            try {
+                                await peerConnectionRef.current.addIceCandidate(candidate)
+                                console.log('✅ Applied queued received ICE candidate')
+                            } catch (error) {
+                                console.error('❌ Error applying queued ICE candidate:', error)
+                            }
+                        }
+                        pendingReceivedIceCandidatesRef.current = []
+                    }
+
                     // Send any queued ICE candidates now
                     if (pendingIceCandidatesRef.current.length > 0) {
                         console.log(`📤 Sending ${pendingIceCandidatesRef.current.length} queued ICE candidates`)
