@@ -24,14 +24,14 @@ export default function Home() {
 
     // Video swap state - true means local is main, false means remote is main
     const [isLocalMain, setIsLocalMain] = useState(false)
-    
+
     // Zoom state for videos
     const [remoteVideoZoom, setRemoteVideoZoom] = useState(1)
     const [remoteVideoPosition, setRemoteVideoPosition] = useState({ x: 0, y: 0 })
     const [remoteVideoDragging, setRemoteVideoDragging] = useState(false)
     const [remoteVideoDragStart, setRemoteVideoDragStart] = useState({ x: 0, y: 0 })
     const [remoteVideoLastTouch, setRemoteVideoLastTouch] = useState<{ distance: number; center: { x: number; y: number } } | null>(null)
-    
+
     const [localVideoZoom, setLocalVideoZoom] = useState(1)
     const [localVideoPosition, setLocalVideoPosition] = useState({ x: 0, y: 0 })
     const [localVideoDragging, setLocalVideoDragging] = useState(false)
@@ -44,6 +44,7 @@ export default function Home() {
     const localStreamRef = useRef<MediaStream | null>(null)
     const peerConnectionRef = useRef<RTCPeerConnection | null>(null)
     const messagesEndRef = useRef<HTMLDivElement>(null)
+    const encryptionKeyRef = useRef<CryptoKey | null>(null) // Shared encryption key for E2E encryption
     const pendingIceCandidatesRef = useRef<RTCIceCandidate[]>([]) // Queue ICE candidates until strangerId is ready
     const pendingReceivedIceCandidatesRef = useRef<RTCIceCandidateInit[]>([]) // Queue ICE candidates received before peer connection is ready
     const socketRef = useRef<Socket | null>(null) // Ref to access current socket in ICE candidate handler
@@ -667,6 +668,13 @@ export default function Home() {
             setIsMatched(true)
             setStrangerId(data.strangerId)
             strangerIdRef.current = data.strangerId // Update ref immediately
+            
+            // Generate shared encryption key for E2E encryption
+            // Use deterministic order (smaller ID first) so both users get same key
+            const sortedIds = [userId.current, data.strangerId].sort()
+            encryptionKeyRef.current = await generateEncryptionKey(sortedIds[0], sortedIds[1])
+            console.log('🔐 End-to-end encryption key generated')
+            
             setMessages([{ id: uuidv4(), text: '🎥 Starting video...', sender: 'stranger' }])
 
             // ALWAYS start video for BOTH users - no matter who creates offer
@@ -932,8 +940,20 @@ export default function Home() {
             setMessages([{ id: uuidv4(), text: 'Stranger disconnected', sender: 'stranger' }])
         })
 
-        newSocket.on('message', (data: { text: string }) => {
-            setMessages((prev) => [...prev, { id: uuidv4(), text: data.text, sender: 'stranger' }])
+        newSocket.on('message', async (data: { text: string; encrypted?: boolean }) => {
+            // Decrypt message if encryption key is available
+            let decryptedText = data.text
+            if (encryptionKeyRef.current) {
+                try {
+                    decryptedText = await decryptMessage(data.text, encryptionKeyRef.current)
+                    console.log('🔓 Decrypted message')
+                } catch (error) {
+                    console.error('❌ Failed to decrypt message:', error)
+                    // Fallback: show encrypted text with indicator
+                    decryptedText = '[Encrypted message - decryption failed]'
+                }
+            }
+            setMessages((prev) => [...prev, { id: uuidv4(), text: decryptedText, sender: 'stranger' }])
         })
 
         setSocket(newSocket)
@@ -963,10 +983,32 @@ export default function Home() {
         }
     }
 
-    const sendMessage = () => {
+    const sendMessage = async () => {
         if (messageInput.trim() && socket && strangerId) {
-            setMessages((prev) => [...prev, { id: uuidv4(), text: messageInput, sender: 'me' }])
-            socket.emit('send-message', { text: messageInput, to: strangerId })
+            const messageText = messageInput.trim()
+            
+            // Encrypt message before sending (if encryption key is available)
+            let messageToSend = messageText
+            if (encryptionKeyRef.current) {
+                try {
+                    messageToSend = await encryptMessage(messageText, encryptionKeyRef.current)
+                    console.log('🔐 Encrypted message before sending')
+                } catch (error) {
+                    console.error('❌ Failed to encrypt message:', error)
+                    // Fallback: send unencrypted (shouldn't happen, but safety)
+                    messageToSend = messageText
+                }
+            }
+            
+            // Show message immediately (will be decrypted on other end)
+            setMessages((prev) => [...prev, { id: uuidv4(), text: messageText, sender: 'me' }])
+            
+            // Send encrypted message through server (server can't read it)
+            socket.emit('send-message', { 
+                text: messageToSend, 
+                to: strangerId,
+                encrypted: !!encryptionKeyRef.current 
+            })
             setMessageInput('')
         }
     }
@@ -1157,25 +1199,25 @@ export default function Home() {
                                     objectFit: 'cover',
                                     objectPosition: 'center'
                                 }}
-                            onLoadedMetadata={() => {
-                                console.log('🎥 Video metadata loaded in DOM')
-                                console.log('📊 Video element state:', {
-                                    srcObject: !!remoteVideoRef.current?.srcObject,
-                                    readyState: remoteVideoRef.current?.readyState,
-                                    videoWidth: remoteVideoRef.current?.videoWidth,
-                                    videoHeight: remoteVideoRef.current?.videoHeight,
-                                    paused: remoteVideoRef.current?.paused
-                                })
-                                setRemoteVideoReady(true)
-                            }}
-                            onCanPlay={() => {
-                                console.log('🎥 Video can play in DOM')
-                                setRemoteVideoReady(true)
-                            }}
-                        onError={(e) => {
-                            console.error('❌ Video element error:', e)
-                            console.error('Video element:', remoteVideoRef.current)
-                        }}
+                                onLoadedMetadata={() => {
+                                    console.log('🎥 Video metadata loaded in DOM')
+                                    console.log('📊 Video element state:', {
+                                        srcObject: !!remoteVideoRef.current?.srcObject,
+                                        readyState: remoteVideoRef.current?.readyState,
+                                        videoWidth: remoteVideoRef.current?.videoWidth,
+                                        videoHeight: remoteVideoRef.current?.videoHeight,
+                                        paused: remoteVideoRef.current?.paused
+                                    })
+                                    setRemoteVideoReady(true)
+                                }}
+                                onCanPlay={() => {
+                                    console.log('🎥 Video can play in DOM')
+                                    setRemoteVideoReady(true)
+                                }}
+                                onError={(e) => {
+                                    console.error('❌ Video element error:', e)
+                                    console.error('Video element:', remoteVideoRef.current)
+                                }}
                             />
                         </div>
                     </div>
