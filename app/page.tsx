@@ -1093,23 +1093,16 @@ export default function Home() {
                 <div className="flex items-center justify-between mb-8">
                     <div className="flex items-center gap-4">
                         {/* Logo */}
-                        <div className="flex items-center gap-3">
-                            <img
-                                src="/logo.png"
-                                alt="Strangers Connect Logo"
-                                className="h-12 w-auto object-contain"
-                                onError={(e) => {
-                                    // Fallback to gradient icon if logo not found
-                                    const target = e.target as HTMLImageElement
-                                    target.style.display = 'none'
-                                    const fallback = target.nextElementSibling as HTMLElement
-                                    if (fallback) fallback.style.display = 'flex'
-                                }}
-                            />
-                            <div className={`hidden w-12 h-12 rounded-2xl ${isDarkMode ? 'bg-gradient-to-br from-yellow-500 to-yellow-600' : 'bg-gradient-to-br from-yellow-400 to-yellow-500'} items-center justify-center shadow-lg border-2 ${isDarkMode ? 'border-yellow-400' : 'border-yellow-500'}`}>
-                                <span className="text-2xl">🎥</span>
-                            </div>
-                        </div>
+                        <img
+                            src="/logo.png"
+                            alt="Strangers Connect Logo"
+                            className="h-12 w-auto object-contain"
+                            onError={(e) => {
+                                // Hide logo if file not found - no fallback emoji
+                                const target = e.target as HTMLImageElement
+                                target.style.display = 'none'
+                            }}
+                        />
                         <div>
                             <h1 className={`text-2xl sm:text-3xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Strangers Connect</h1>
                             <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Connect • Chat • Video</p>
@@ -1567,17 +1560,11 @@ export default function Home() {
                                     alt="Strangers Connect"
                                     className="h-32 w-auto object-contain"
                                     onError={(e) => {
-                                        // Fallback to emoji if logo not found
+                                        // Hide logo if file not found - no fallback emoji
                                         const target = e.target as HTMLImageElement
                                         target.style.display = 'none'
-                                        const fallback = target.nextElementSibling as HTMLElement
-                                        if (fallback) {
-                                            fallback.style.display = 'block'
-                                            fallback.className = `text-7xl mb-4 ${isDarkMode ? 'text-yellow-400' : 'text-yellow-500'}`
-                                        }
                                     }}
                                 />
-                                <div className={`hidden text-7xl mb-4 ${isDarkMode ? 'text-yellow-400' : 'text-yellow-500'}`}>🌐</div>
                             </div>
                             <h2 className={`text-3xl sm:text-4xl font-bold mb-3 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
                                 Connect with Strangers
