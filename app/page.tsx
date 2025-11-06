@@ -29,6 +29,7 @@ export default function Home() {
     const peerConnectionRef = useRef<RTCPeerConnection | null>(null)
     const messagesEndRef = useRef<HTMLDivElement>(null)
     const pendingIceCandidatesRef = useRef<RTCIceCandidate[]>([]) // Queue ICE candidates until strangerId is ready
+    const pendingReceivedIceCandidatesRef = useRef<RTCIceCandidateInit[]>([]) // Queue ICE candidates received before peer connection is ready
     const socketRef = useRef<Socket | null>(null) // Ref to access current socket in ICE candidate handler
     const strangerIdRef = useRef<string | null>(null) // Ref to access current strangerId in ICE candidate handler
 
@@ -689,6 +690,20 @@ export default function Home() {
 
             console.log('✅ Camera ready, peer connection:', !!pc)
 
+            // CRITICAL: Apply any queued ICE candidates that arrived before peer connection was ready
+            if (pendingReceivedIceCandidatesRef.current.length > 0 && peerConnectionRef.current) {
+                console.log(`📥 Applying ${pendingReceivedIceCandidatesRef.current.length} queued received ICE candidates`)
+                for (const candidate of pendingReceivedIceCandidatesRef.current) {
+                    try {
+                        await peerConnectionRef.current.addIceCandidate(candidate)
+                        console.log('✅ Applied queued received ICE candidate')
+                    } catch (error) {
+                        console.error('❌ Error applying queued ICE candidate:', error)
+                    }
+                }
+                pendingReceivedIceCandidatesRef.current = []
+            }
+
             // CRITICAL: Update ICE candidate handler BEFORE creating offer
             // This ensures ICE candidates generated during offer creation are sent immediately
             if (peerConnectionRef.current) {
@@ -836,23 +851,23 @@ export default function Home() {
         })
 
         newSocket.on('webrtc-ice', async (data: { candidate: RTCIceCandidateInit; from?: string }) => {
-            console.log('🧊 Received ICE candidate from stranger', {
-                from: data.from,
+            console.log('🧊 Received ICE candidate from stranger', { 
+                from: data.from, 
                 hasCandidate: !!data.candidate,
-                candidatePreview: data.candidate?.candidate?.substring(0, 50)
+                candidatePreview: data.candidate?.candidate?.substring(0, 50) 
             })
-
+            
             if (!data.candidate) {
                 console.log('🧊 Received null ICE candidate (gathering complete signal)')
                 return
             }
-
+            
             if (peerConnectionRef.current) {
                 try {
                     // Allow adding candidates even before remote description is set (they'll be queued)
                     await peerConnectionRef.current.addIceCandidate(data.candidate)
                     console.log('✅ Added ICE candidate to peer connection')
-
+                    
                     // Log connection state after adding candidate
                     setTimeout(() => {
                         const pc = peerConnectionRef.current
@@ -872,7 +887,9 @@ export default function Home() {
                     }
                 }
             } else {
-                console.error('❌ No peer connection available when ICE candidate received')
+                // Queue candidate for later - peer connection not ready yet
+                console.log('📦 Queuing ICE candidate (peer connection not ready yet)')
+                pendingReceivedIceCandidatesRef.current.push(data.candidate)
             }
         })
 
