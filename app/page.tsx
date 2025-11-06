@@ -365,29 +365,6 @@ export default function Home() {
                     </div>
                 </div>
 
-                {/* Chat Mode Toggle */}
-                {isMatched && (
-                    <div className="mb-4 flex justify-center gap-4">
-                        <button
-                            onClick={() => switchChatMode('text')}
-                            className={`px-4 py-2 rounded-lg font-semibold transition ${chatMode === 'text'
-                                ? 'bg-primary-600 text-white'
-                                : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
-                                }`}
-                        >
-                            💬 Text Chat
-                        </button>
-                        <button
-                            onClick={() => switchChatMode('video')}
-                            className={`px-4 py-2 rounded-lg font-semibold transition ${chatMode === 'video'
-                                ? 'bg-primary-600 text-white'
-                                : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
-                                }`}
-                        >
-                            📹 Video Chat
-                        </button>
-                    </div>
-                )}
 
         {/* Video Chat Container - Always shown when matched */}
         {isMatched && (
@@ -451,18 +428,19 @@ export default function Home() {
                     </div>
                 )}
 
-                {/* Text Chat Container */}
-                {chatMode === 'text' && (
-                    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 mb-4" style={{ minHeight: '400px' }}>
+                {/* Text Chat - Below video */}
+                {isMatched && (
+                    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-4 mb-4">
+                        <h3 className="text-lg font-semibold mb-2 text-gray-800 dark:text-white">💬 Chat</h3>
                         {/* Messages */}
-                        <div className="h-80 overflow-y-auto mb-4 space-y-2">
+                        <div className="h-40 overflow-y-auto mb-3 space-y-2">
                             {messages.map((message) => (
                                 <div
                                     key={message.id}
                                     className={`flex ${message.sender === 'me' ? 'justify-end' : 'justify-start'}`}
                                 >
                                     <div
-                                        className={`max-w-xs px-4 py-2 rounded-lg ${message.sender === 'me'
+                                        className={`max-w-xs px-3 py-1.5 rounded-lg text-sm ${message.sender === 'me'
                                             ? 'bg-primary-600 text-white'
                                             : 'bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-white'
                                             }`}
@@ -475,24 +453,22 @@ export default function Home() {
                         </div>
 
                         {/* Message Input */}
-                        {isMatched && (
-                            <div className="flex gap-2">
-                                <input
-                                    type="text"
-                                    value={messageInput}
-                                    onChange={(e) => setMessageInput(e.target.value)}
-                                    onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
-                                    placeholder="Type a message..."
-                                    className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 dark:bg-gray-700 dark:text-white"
-                                />
-                                <button
-                                    onClick={sendMessage}
-                                    className="px-6 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition"
-                                >
-                                    Send
-                                </button>
-                            </div>
-                        )}
+                        <div className="flex gap-2">
+                            <input
+                                type="text"
+                                value={messageInput}
+                                onChange={(e) => setMessageInput(e.target.value)}
+                                onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
+                                placeholder="Type a message..."
+                                className="flex-1 px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 dark:bg-gray-700 dark:text-white"
+                            />
+                            <button
+                                onClick={sendMessage}
+                                className="px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition"
+                            >
+                                Send
+                            </button>
+                        </div>
                     </div>
                 )}
 
