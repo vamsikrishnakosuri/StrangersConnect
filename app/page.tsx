@@ -397,9 +397,13 @@ export default function Home() {
           })
         }
         
-        // Create offer after everything is ready
-        if (peerConnectionRef.current && socket && strangerId && localStreamRef.current) {
-          console.log('Creating WebRTC offer...')
+        // ONLY ONE USER SHOULD CREATE OFFER - use userId comparison to decide
+        // The user with the "smaller" userId creates the offer, the other waits
+        const shouldCreateOffer = userId.current < strangerId
+        console.log('Should I create offer?', shouldCreateOffer, '(my ID:', userId.current, 'vs stranger:', strangerId, ')')
+        
+        if (shouldCreateOffer && peerConnectionRef.current && socket && strangerId && localStreamRef.current) {
+          console.log('✅ I will create the offer (my ID is smaller)')
           const offer = await peerConnectionRef.current.createOffer({
             offerToReceiveAudio: true,
             offerToReceiveVideo: true,
@@ -411,7 +415,9 @@ export default function Home() {
             strangerId,
             senderId: userId.current,
           })
-          console.log('WebRTC offer sent')
+          console.log('📤 WebRTC offer sent to stranger')
+        } else {
+          console.log('⏳ I will wait to receive an offer (stranger will send it)')
         }
       } catch (error) {
         console.error('Error switching to video mode:', error)
