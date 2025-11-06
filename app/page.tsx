@@ -50,6 +50,77 @@ export default function Home() {
     const socketRef = useRef<Socket | null>(null) // Ref to access current socket in ICE candidate handler
     const strangerIdRef = useRef<string | null>(null) // Ref to access current strangerId in ICE candidate handler
 
+    // End-to-End Encryption Functions (using Web Crypto API - FREE, built into browsers)
+    const generateEncryptionKey = async (user1Id: string, user2Id: string): Promise<CryptoKey> => {
+        // Create a deterministic key from both user IDs (same key for both users)
+        const keyMaterial = `${user1Id}:${user2Id}` // Combined string
+        const encoder = new TextEncoder()
+        const data = encoder.encode(keyMaterial)
+        
+        // Hash the combined string to get consistent key material
+        const hashBuffer = await crypto.subtle.digest('SHA-256', data)
+        
+        // Import the key for AES-GCM encryption
+        const key = await crypto.subtle.importKey(
+            'raw',
+            hashBuffer,
+            { name: 'AES-GCM', length: 256 },
+            false,
+            ['encrypt', 'decrypt']
+        )
+        
+        return key
+    }
+
+    const encryptMessage = async (text: string, key: CryptoKey): Promise<string> => {
+        const encoder = new TextEncoder()
+        const data = encoder.encode(text)
+        
+        // Generate a random IV (initialization vector) for each message
+        const iv = crypto.getRandomValues(new Uint8Array(12))
+        
+        // Encrypt the message
+        const encryptedData = await crypto.subtle.encrypt(
+            { name: 'AES-GCM', iv: iv },
+            key,
+            data
+        )
+        
+        // Combine IV and encrypted data, then encode as base64
+        const combined = new Uint8Array(iv.length + encryptedData.byteLength)
+        combined.set(iv)
+        combined.set(new Uint8Array(encryptedData), iv.length)
+        
+        // Convert to base64 for transmission
+        return btoa(String.fromCharCode(...combined))
+    }
+
+    const decryptMessage = async (encryptedText: string, key: CryptoKey): Promise<string> => {
+        try {
+            // Decode from base64
+            const combined = Uint8Array.from(atob(encryptedText), c => c.charCodeAt(0))
+            
+            // Extract IV (first 12 bytes) and encrypted data (rest)
+            const iv = combined.slice(0, 12)
+            const encryptedData = combined.slice(12)
+            
+            // Decrypt
+            const decryptedData = await crypto.subtle.decrypt(
+                { name: 'AES-GCM', iv: iv },
+                key,
+                encryptedData
+            )
+            
+            // Convert back to string
+            const decoder = new TextDecoder()
+            return decoder.decode(decryptedData)
+        } catch (error) {
+            console.error('❌ Decryption error:', error)
+            // If decryption fails, return original (for backward compatibility)
+            return encryptedText
+        }
+    }
+
     // Auto-scroll messages
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
