@@ -124,14 +124,14 @@ export default function Home() {
                 console.log('🎥 Setting remote VIDEO stream')
                 console.log('Stream ID:', event.streams[0].id)
                 console.log('Video tracks in stream:', event.streams[0].getVideoTracks().length)
-                
+
                 // CRITICAL: Verify stream has active video tracks
                 const videoTracks = event.streams[0].getVideoTracks()
                 if (videoTracks.length === 0) {
                     console.error('❌❌❌ ERROR: Stream has NO video tracks!')
                     return
                 }
-                
+
                 const activeVideoTrack = videoTracks.find(t => t.enabled && t.readyState === 'live')
                 if (!activeVideoTrack) {
                     console.error('❌❌❌ ERROR: No active video track found in stream!')
@@ -142,7 +142,7 @@ export default function Home() {
                     })))
                     return
                 }
-                
+
                 console.log('✅ Found active video track:', {
                     id: activeVideoTrack.id,
                     enabled: activeVideoTrack.enabled,
@@ -322,7 +322,7 @@ export default function Home() {
                     sdpMLineIndex: event.candidate.sdpMLineIndex,
                     sdpMid: event.candidate.sdpMid
                 })
-                
+
                 // Send ICE candidate if socket and strangerId are available
                 // Note: socket and strangerId might not be available yet, so we'll set this up in the socket effect
                 if (socket && strangerId) {
@@ -614,14 +614,18 @@ export default function Home() {
                             width: '100%',
                             height: '100%',
                             display: 'block', // Always block, never none
-                            opacity: isMatched ? (remoteVideoReady ? '1' : '0.01') : '0.01', // Slightly visible even when container hidden
+                            // Show video if it has srcObject OR if remoteVideoReady is true
+                            opacity: (() => {
+                                const hasSrcObject = remoteVideoRef.current?.srcObject !== null && remoteVideoRef.current?.srcObject !== undefined
+                                return isMatched && (hasSrcObject || remoteVideoReady) ? '1' : '0.01'
+                            })(),
                             position: 'absolute',
                             top: 0,
                             left: 0,
                             right: 0,
                             bottom: 0,
                             zIndex: 15, // Above placeholder (z-10), below local PIP (z-20)
-                            pointerEvents: remoteVideoReady ? 'auto' : 'none',
+                            pointerEvents: 'auto', // Always allow interaction
                             visibility: 'visible', // Always visible, never hidden
                             objectFit: 'cover', // Ensure video fills container
                             objectPosition: 'center' // Center the video
@@ -669,8 +673,11 @@ export default function Home() {
                         </div>
                     )}
 
-                    {/* Placeholder */}
-                    {!remoteVideoReady && isMatched && (
+                    {/* Placeholder - Only show if video has no srcObject */}
+                    {(() => {
+                        const hasSrcObject = remoteVideoRef.current?.srcObject !== null && remoteVideoRef.current?.srcObject !== undefined
+                        return !hasSrcObject && !remoteVideoReady && isMatched
+                    })() && (
                         <div className="absolute inset-0 flex items-center justify-center bg-gray-800 z-10">
                             <div className="text-center">
                                 <div className="text-6xl mb-4">👤</div>
