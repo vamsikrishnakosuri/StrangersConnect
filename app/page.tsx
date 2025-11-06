@@ -45,6 +45,23 @@ export default function Home() {
 
     const pc = new RTCPeerConnection(configuration)
     
+    // Monitor connection state
+    pc.onconnectionstatechange = () => {
+      console.log('Peer connection state changed:', pc.connectionState)
+      if (pc.connectionState === 'connected') {
+        console.log('✅ WebRTC connection established!')
+      } else if (pc.connectionState === 'failed') {
+        console.error('❌ WebRTC connection failed')
+      }
+    }
+    
+    pc.oniceconnectionstatechange = () => {
+      console.log('ICE connection state:', pc.iceConnectionState)
+      if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+        console.log('✅ ICE connection established!')
+      }
+    }
+    
     // Handle remote stream
     pc.ontrack = (event) => {
       console.log('Received remote track:', event.track.kind, event.streams.length, 'streams')
@@ -519,14 +536,33 @@ export default function Home() {
     }
 
     newSocket.on('webrtc-answer', async (data: { answer: RTCSessionDescriptionInit; senderId: string }) => {
+      console.log('Received WebRTC answer from stranger')
       if (peerConnectionRef.current) {
-        await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(data.answer))
+        try {
+          await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(data.answer))
+          console.log('Set remote description from answer successfully')
+          
+          // Check connection state
+          console.log('Peer connection state:', peerConnectionRef.current.connectionState)
+          console.log('ICE connection state:', peerConnectionRef.current.iceConnectionState)
+        } catch (error) {
+          console.error('Error setting remote description from answer:', error)
+        }
+      } else {
+        console.warn('Peer connection not ready when answer received')
       }
     })
 
     newSocket.on('webrtc-ice-candidate', async (data: { candidate: RTCIceCandidateInit; senderId: string }) => {
+      console.log('Received ICE candidate from stranger')
       if (peerConnectionRef.current && data.candidate) {
-        await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(data.candidate))
+        try {
+          await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(data.candidate))
+          console.log('Added ICE candidate successfully')
+          console.log('ICE connection state:', peerConnectionRef.current.iceConnectionState)
+        } catch (error) {
+          console.error('Error adding ICE candidate:', error)
+        }
       }
     })
 
@@ -667,15 +703,33 @@ export default function Home() {
                 position: 'absolute',
                 top: 0,
                 left: 0,
+                zIndex: 1,
+              }}
+              onLoadedMetadata={() => {
+                console.log('Remote video metadata loaded')
+                setRemoteVideoEnabled(true)
+              }}
+              onCanPlay={() => {
+                console.log('Remote video can play')
+                setRemoteVideoEnabled(true)
+              }}
+              onPlay={() => {
+                console.log('Remote video started playing')
+                setRemoteVideoEnabled(true)
               }}
             />
             
             {/* Placeholder when no remote video */}
             {!remoteVideoEnabled && (
-              <div className="absolute inset-0 flex items-center justify-center bg-gray-900 text-white">
+              <div className="absolute inset-0 flex items-center justify-center bg-gray-900 text-white z-0">
                 <div className="text-center">
                   <div className="text-6xl mb-4">👤</div>
                   <p>Waiting for stranger to enable video...</p>
+                  {peerConnectionRef.current && (
+                    <p className="text-xs mt-2 text-gray-400">
+                      Connection: {peerConnectionRef.current.connectionState}
+                    </p>
+                  )}
                 </div>
               </div>
             )}
