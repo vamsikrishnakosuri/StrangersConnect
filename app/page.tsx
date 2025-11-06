@@ -40,11 +40,18 @@ export default function Home() {
     useEffect(() => {
         console.log('🚀 Initializing PeerJS with ID:', userId.current)
 
+        // Use our own PeerJS server on Railway
+        const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3001'
+        const peerHost = socketUrl.replace('https://', '').replace('http://', '').replace(':3001', '').replace(':8080', '')
+        const isLocal = socketUrl.includes('localhost')
+
+        console.log('PeerJS connecting to:', peerHost)
+
         const peer = new Peer(userId.current, {
-            host: 'peerjs-server.herokuapp.com',
-            port: 443,
-            path: '/',
-            secure: true,
+            host: peerHost,
+            port: isLocal ? 3001 : 443,
+            path: '/peerjs',
+            secure: !isLocal,
             config: {
                 iceServers: [
                     { urls: 'stun:stun.l.google.com:19302' },
@@ -367,8 +374,8 @@ export default function Home() {
                         <button
                             onClick={() => switchChatMode('text')}
                             className={`px-4 py-2 rounded-lg font-semibold transition ${chatMode === 'text'
-                                    ? 'bg-primary-600 text-white'
-                                    : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
+                                ? 'bg-primary-600 text-white'
+                                : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
                                 }`}
                         >
                             💬 Text Chat
@@ -376,8 +383,8 @@ export default function Home() {
                         <button
                             onClick={() => switchChatMode('video')}
                             className={`px-4 py-2 rounded-lg font-semibold transition ${chatMode === 'video'
-                                    ? 'bg-primary-600 text-white'
-                                    : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
+                                ? 'bg-primary-600 text-white'
+                                : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
                                 }`}
                         >
                             📹 Video Chat
@@ -459,8 +466,8 @@ export default function Home() {
                                 >
                                     <div
                                         className={`max-w-xs px-4 py-2 rounded-lg ${message.sender === 'me'
-                                                ? 'bg-primary-600 text-white'
-                                                : 'bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-white'
+                                            ? 'bg-primary-600 text-white'
+                                            : 'bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-white'
                                             }`}
                                     >
                                         {message.text}

@@ -1,7 +1,27 @@
 import { Server } from 'socket.io'
 import { createServer } from 'http'
+import express from 'express'
+import { ExpressPeerServer } from 'peer'
 
-const httpServer = createServer()
+const app = express()
+const httpServer = createServer(app)
+
+// PeerJS server for WebRTC signaling
+const peerServer = ExpressPeerServer(httpServer, {
+  debug: true,
+  path: '/',
+})
+
+app.use('/peerjs', peerServer)
+
+peerServer.on('connection', (client) => {
+  console.log('PeerJS client connected:', client.getId())
+})
+
+peerServer.on('disconnect', (client) => {
+  console.log('PeerJS client disconnected:', client.getId())
+})
+
 const io = new Server(httpServer, {
   cors: {
     origin: process.env.FRONTEND_URL || '*', // Allow all origins in production, or set specific URL
