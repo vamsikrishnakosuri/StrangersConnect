@@ -33,6 +33,47 @@ export default function Home() {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
     }, [messages])
 
+    // Force video visibility when srcObject is set (since cameras are on but video not showing)
+    useEffect(() => {
+        const checkVideo = () => {
+            if (remoteVideoRef.current && remoteVideoRef.current.srcObject) {
+                const video = remoteVideoRef.current
+                const stream = video.srcObject as MediaStream
+                
+                // Force visibility - CRITICAL for showing video
+                video.style.opacity = '1'
+                video.style.display = 'block'
+                video.style.visibility = 'visible'
+                video.style.zIndex = '15'
+                
+                // Check if video has dimensions (means it's loaded)
+                if (video.videoWidth > 0 && video.videoHeight > 0) {
+                    setRemoteVideoReady(true)
+                    console.log('✅✅✅ Video has dimensions, forcing visibility!', {
+                        width: video.videoWidth,
+                        height: video.videoHeight,
+                        readyState: video.readyState,
+                        paused: video.paused
+                    })
+                }
+                
+                // Try to play if paused
+                if (video.paused) {
+                    video.play().catch(err => {
+                        console.log('⚠️ Autoplay blocked, but video is visible:', err)
+                    })
+                }
+            }
+        }
+        
+        // Check immediately
+        checkVideo()
+        
+        // Check periodically (every 500ms) to catch stream when it arrives
+        const interval = setInterval(checkVideo, 500)
+        return () => clearInterval(interval)
+    }, [isMatched, remoteVideoReady])
+
     // Initialize WebRTC peer connection
     const createPeerConnection = () => {
         const pc = new RTCPeerConnection({
