@@ -649,6 +649,46 @@ export default function Home() {
 
             console.log('✅ Camera ready, peer connection:', !!pc)
 
+            // CRITICAL: Update ICE candidate handler BEFORE creating offer
+            // This ensures ICE candidates generated during offer creation are sent immediately
+            if (peerConnectionRef.current) {
+                peerConnectionRef.current.onicecandidate = (event) => {
+                    if (event.candidate) {
+                        console.log('🧊 ICE candidate generated (offer creator):', {
+                            candidate: event.candidate.candidate.substring(0, 50) + '...',
+                            sdpMLineIndex: event.candidate.sdpMLineIndex,
+                            sdpMid: event.candidate.sdpMid
+                        })
+                        
+                        const socketToUse = socketRef.current
+                        const strangerIdToUse = strangerIdRef.current
+                        
+                        if (socketToUse && strangerIdToUse) {
+                            socketToUse.emit('webrtc-ice', {
+                                candidate: event.candidate,
+                                to: strangerIdToUse,
+                            })
+                            console.log('📤 Sent ICE candidate to stranger (offer creator)')
+                        } else {
+                            pendingIceCandidatesRef.current.push(event.candidate)
+                            console.log('📦 Queued ICE candidate (offer creator)')
+                        }
+                    }
+                }
+            }
+
+            // Send any queued ICE candidates now that we have strangerId
+            if (pendingIceCandidatesRef.current.length > 0) {
+                console.log(`📤 Sending ${pendingIceCandidatesRef.current.length} queued ICE candidates`)
+                pendingIceCandidatesRef.current.forEach(candidate => {
+                    newSocket.emit('webrtc-ice', {
+                        candidate: candidate,
+                        to: data.strangerId,
+                    })
+                })
+                pendingIceCandidatesRef.current = []
+            }
+
             // Wait a moment to ensure peer connection is fully set up
             await new Promise(resolve => setTimeout(resolve, 300))
 
