@@ -47,14 +47,37 @@ export default function Home() {
     
     // Handle remote stream
     pc.ontrack = (event) => {
-      console.log('Received remote track:', event.track.kind)
+      console.log('Received remote track:', event.track.kind, event.streams.length, 'streams')
       if (remoteVideoRef.current && event.streams[0]) {
         remoteVideoRef.current.srcObject = event.streams[0]
-        remoteVideoRef.current.play().catch((error) => {
-          console.error('Error playing remote video:', error)
-        })
-        setRemoteVideoEnabled(true)
-        console.log('Remote video enabled')
+        
+        // Set attributes for iOS
+        remoteVideoRef.current.setAttribute('playsinline', 'true')
+        remoteVideoRef.current.setAttribute('webkit-playsinline', 'true')
+        remoteVideoRef.current.setAttribute('x5-playsinline', 'true')
+        
+        // Force play with retry
+        const playRemoteVideo = async (attempt = 1) => {
+          try {
+            await remoteVideoRef.current!.play()
+            console.log('Remote video playing successfully')
+            setRemoteVideoEnabled(true)
+            
+            // Ensure video is visible
+            if (remoteVideoRef.current) {
+              remoteVideoRef.current.style.display = 'block'
+              remoteVideoRef.current.style.opacity = '1'
+            }
+          } catch (error) {
+            console.error(`Error playing remote video (attempt ${attempt}):`, error)
+            if (attempt < 3) {
+              setTimeout(() => playRemoteVideo(attempt + 1), 200 * attempt)
+            }
+          }
+        }
+        
+        playRemoteVideo()
+        console.log('Remote video setup complete')
       }
     }
 
@@ -113,21 +136,37 @@ export default function Home() {
         console.log('Setting local video srcObject...')
         localVideoRef.current.srcObject = stream
         
-        // Force play
-        try {
-          await localVideoRef.current.play()
-          console.log('Local video playing successfully')
-        } catch (playError) {
-          console.error('Error playing local video:', playError)
-          // Try again after a short delay
-          setTimeout(() => {
+        // Set video element attributes for iOS
+        localVideoRef.current.setAttribute('playsinline', 'true')
+        localVideoRef.current.setAttribute('webkit-playsinline', 'true')
+        localVideoRef.current.setAttribute('x5-playsinline', 'true')
+        
+        // Force play with multiple attempts
+        const playVideo = async (attempt = 1) => {
+          try {
+            await localVideoRef.current!.play()
+            console.log('Local video playing successfully')
+            
+            // Double check video is actually playing
             if (localVideoRef.current) {
-              localVideoRef.current.play().catch((e) => {
-                console.error('Retry play failed:', e)
-              })
+              localVideoRef.current.style.display = 'block'
+              localVideoRef.current.style.opacity = '1'
+              console.log('Video element display:', localVideoRef.current.style.display)
+              console.log('Video element opacity:', localVideoRef.current.style.opacity)
+              console.log('Video element srcObject:', !!localVideoRef.current.srcObject)
             }
-          }, 100)
+          } catch (playError) {
+            console.error(`Error playing local video (attempt ${attempt}):`, playError)
+            if (attempt < 3) {
+              // Try again after delay
+              setTimeout(() => playVideo(attempt + 1), 200 * attempt)
+            } else {
+              console.error('Failed to play video after 3 attempts')
+            }
+          }
         }
+        
+        await playVideo()
       } else {
         console.warn('localVideoRef.current is null!')
       }
@@ -527,9 +566,18 @@ export default function Home() {
               ref={remoteVideoRef}
               autoPlay
               playsInline
+              webkit-playsinline="true"
+              x5-playsinline="true"
               muted={false}
               className="w-full h-full object-cover bg-black"
-              style={{ display: remoteVideoEnabled ? 'block' : 'none' }}
+              style={{ 
+                display: remoteVideoEnabled ? 'block' : 'none',
+                width: '100%',
+                height: '100%',
+                position: 'absolute',
+                top: 0,
+                left: 0,
+              }}
             />
             
             {/* Placeholder when no remote video */}
