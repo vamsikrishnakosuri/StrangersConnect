@@ -19,6 +19,7 @@ export default function Home() {
     const [messageInput, setMessageInput] = useState('')
     const [strangerId, setStrangerId] = useState<string | null>(null)
     const [remoteVideoReady, setRemoteVideoReady] = useState(false)
+    const [hasRemoteStream, setHasRemoteStream] = useState(false) // Track when srcObject is set
     const [showPlayButton, setShowPlayButton] = useState(false)
 
     const userId = useRef(uuidv4())
@@ -39,13 +40,13 @@ export default function Home() {
             if (remoteVideoRef.current && remoteVideoRef.current.srcObject) {
                 const video = remoteVideoRef.current
                 const stream = video.srcObject as MediaStream
-                
+
                 // Force visibility - CRITICAL for showing video
                 video.style.opacity = '1'
                 video.style.display = 'block'
                 video.style.visibility = 'visible'
                 video.style.zIndex = '15'
-                
+
                 // Check if video has dimensions (means it's loaded)
                 if (video.videoWidth > 0 && video.videoHeight > 0) {
                     setRemoteVideoReady(true)
@@ -56,7 +57,7 @@ export default function Home() {
                         paused: video.paused
                     })
                 }
-                
+
                 // Try to play if paused
                 if (video.paused) {
                     video.play().catch(err => {
@@ -65,10 +66,10 @@ export default function Home() {
                 }
             }
         }
-        
+
         // Check immediately
         checkVideo()
-        
+
         // Check periodically (every 500ms) to catch stream when it arrives
         const interval = setInterval(checkVideo, 500)
         return () => clearInterval(interval)
@@ -212,6 +213,9 @@ export default function Home() {
 
                     // NOW set the stream
                     remoteVideoRef.current.srcObject = event.streams[0]
+                    
+                    // CRITICAL: Update state so opacity calculation works during render
+                    setHasRemoteStream(true)
 
                     // Verify srcObject was set
                     console.log('✅ srcObject set:', {
@@ -472,6 +476,8 @@ export default function Home() {
             setIsConnected(false)
             setIsMatched(false)
             setIsSearching(false)
+            setHasRemoteStream(false) // Reset stream state
+            setRemoteVideoReady(false) // Reset ready state
             stopVideo()
         })
 
@@ -562,6 +568,8 @@ export default function Home() {
         newSocket.on('disconnected', () => {
             setIsMatched(false)
             setStrangerId(null)
+            setHasRemoteStream(false) // Reset stream state
+            setRemoteVideoReady(false) // Reset ready state
             stopVideo()
             setMessages([{ id: uuidv4(), text: 'Stranger disconnected', sender: 'stranger' }])
         })
@@ -590,6 +598,8 @@ export default function Home() {
             socket.emit('disconnect-stranger', { strangerId })
             setIsMatched(false)
             setStrangerId(null)
+            setHasRemoteStream(false) // Reset stream state
+            setRemoteVideoReady(false) // Reset ready state
             setMessages([])
             stopVideo()
         }
@@ -656,10 +666,8 @@ export default function Home() {
                             height: '100%',
                             display: 'block', // Always block, never none
                             // Show video if it has srcObject OR if remoteVideoReady is true
-                            opacity: (() => {
-                                const hasSrcObject = remoteVideoRef.current?.srcObject !== null && remoteVideoRef.current?.srcObject !== undefined
-                                return isMatched && (hasSrcObject || remoteVideoReady) ? '1' : '0.01'
-                            })(),
+                            // CRITICAL: Use state (hasRemoteStream) not ref - refs aren't available during render!
+                            opacity: isMatched && (hasRemoteStream || remoteVideoReady) ? '1' : '0.01',
                             position: 'absolute',
                             top: 0,
                             left: 0,
@@ -719,13 +727,13 @@ export default function Home() {
                         const hasSrcObject = remoteVideoRef.current?.srcObject !== null && remoteVideoRef.current?.srcObject !== undefined
                         return !hasSrcObject && !remoteVideoReady && isMatched
                     })() && (
-                        <div className="absolute inset-0 flex items-center justify-center bg-gray-800 z-10">
-                            <div className="text-center">
-                                <div className="text-6xl mb-4">👤</div>
-                                <p>Waiting for stranger's video...</p>
+                            <div className="absolute inset-0 flex items-center justify-center bg-gray-800 z-10">
+                                <div className="text-center">
+                                    <div className="text-6xl mb-4">👤</div>
+                                    <p>Waiting for stranger's video...</p>
+                                </div>
                             </div>
-                        </div>
-                    )}
+                        )}
 
                     {/* Local Video (PIP) - Always show when matched */}
                     {isMatched && (
