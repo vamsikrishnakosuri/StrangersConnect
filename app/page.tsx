@@ -41,38 +41,82 @@ export default function Home() {
             ],
         })
 
-        pc.ontrack = (event) => {
-            console.log('📥 Received remote track:', event.track.kind, event.track.readyState)
-
-            if (event.track.kind === 'video' && remoteVideoRef.current && event.streams[0]) {
-                console.log('🎥 Setting remote VIDEO stream')
-
-                // Set stream (only once)
-                if (!remoteVideoRef.current.srcObject) {
-                    remoteVideoRef.current.srcObject = event.streams[0]
-                    setRemoteVideoReady(true)
-
-                    // Force play - immediate and explicit
-                    remoteVideoRef.current.play().catch(e => {
-                        console.error('Play error:', e)
-                        // Retry once after delay
-                        setTimeout(() => {
-                            if (remoteVideoRef.current) {
-                                remoteVideoRef.current.play().catch(e2 => console.error('Retry play error:', e2))
-                            }
-                        }, 500)
-                    })
-
-                    // Make sure it's visible - FORCE IT
-                    if (remoteVideoRef.current) {
-                        remoteVideoRef.current.style.display = 'block'
-                        remoteVideoRef.current.style.opacity = '1'
-                        remoteVideoRef.current.style.visibility = 'visible'
-                        console.log('✅ Forced video visibility')
-                    }
-                }
+    pc.ontrack = (event) => {
+      console.log('📥 Received remote track:', event.track.kind, event.track.readyState)
+      
+      if (event.track.kind === 'video' && remoteVideoRef.current && event.streams[0]) {
+        console.log('🎥 Setting remote VIDEO stream')
+        console.log('Stream ID:', event.streams[0].id)
+        console.log('Video tracks in stream:', event.streams[0].getVideoTracks().length)
+        
+        // Set stream (only once)
+        if (!remoteVideoRef.current.srcObject) {
+          remoteVideoRef.current.srcObject = event.streams[0]
+          console.log('✅ srcObject set, checking:', {
+            hasSrcObject: !!remoteVideoRef.current.srcObject,
+            videoWidth: remoteVideoRef.current.videoWidth,
+            videoHeight: remoteVideoRef.current.videoHeight,
+            readyState: remoteVideoRef.current.readyState
+          })
+          
+          setRemoteVideoReady(true)
+          
+          // Make sure it's visible FIRST
+          if (remoteVideoRef.current) {
+            remoteVideoRef.current.style.display = 'block'
+            remoteVideoRef.current.style.opacity = '1'
+            remoteVideoRef.current.style.visibility = 'visible'
+            console.log('✅ Forced video visibility')
+          }
+          
+          // Try play with detailed logging
+          const attemptPlay = async () => {
+            if (!remoteVideoRef.current) {
+              console.error('❌ remoteVideoRef is null!')
+              return
             }
+            
+            try {
+              await remoteVideoRef.current.play()
+              console.log('✅✅✅ REMOTE VIDEO PLAYING! ✅✅✅')
+              console.log('Video dimensions:', remoteVideoRef.current.videoWidth, 'x', remoteVideoRef.current.videoHeight)
+            } catch (error) {
+              console.error('❌ Play failed:', error)
+              console.error('Error name:', error.name)
+              console.error('Error message:', error.message)
+              
+              // If autoplay policy issue, show user a message
+              if (error.name === 'NotAllowedError' || error.name === 'NotAllowedError') {
+                console.warn('⚠️ Autoplay blocked - user interaction required')
+                // Try again after a click
+                document.addEventListener('click', () => {
+                  if (remoteVideoRef.current) {
+                    remoteVideoRef.current.play()
+                      .then(() => console.log('✅ Play succeeded after user click'))
+                      .catch(e => console.error('Still failed after click:', e))
+                  }
+                }, { once: true })
+              }
+              
+              // Retry once after delay
+              setTimeout(() => {
+                if (remoteVideoRef.current && remoteVideoRef.current.paused) {
+                  console.log('🔄 Retrying play()...')
+                  remoteVideoRef.current.play()
+                    .then(() => console.log('✅ Retry play succeeded!'))
+                    .catch(e2 => console.error('❌ Retry play failed:', e2))
+                }
+              }, 1000)
+            }
+          }
+          
+          // Try play immediately
+          attemptPlay()
+        } else {
+          console.log('⚠️ srcObject already set, skipping')
         }
+      }
+    }
 
         pc.onicecandidate = (event) => {
             if (event.candidate && socket && strangerId) {
@@ -323,21 +367,21 @@ export default function Home() {
                 {/* Video Container */}
                 {isMatched && (
                     <div className="mb-4 bg-black rounded-lg overflow-hidden relative" style={{ aspectRatio: '16/9' }}>
-            {/* Remote Video - Always rendered, never removed */}
-            <video
-              ref={remoteVideoRef}
-              autoPlay
-              playsInline
-              muted={false}
-              className="w-full h-full object-cover bg-black"
-              style={{ 
-                width: '100%', 
-                height: '100%',
-                display: 'block',
-                opacity: remoteVideoReady ? '1' : '0',
-                visibility: remoteVideoReady ? 'visible' : 'hidden'
-              }}
-            />
+                        {/* Remote Video - Always rendered, never removed */}
+                        <video
+                            ref={remoteVideoRef}
+                            autoPlay
+                            playsInline
+                            muted={false}
+                            className="w-full h-full object-cover bg-black"
+                            style={{
+                                width: '100%',
+                                height: '100%',
+                                display: 'block',
+                                opacity: remoteVideoReady ? '1' : '0',
+                                visibility: remoteVideoReady ? 'visible' : 'hidden'
+                            }}
+                        />
 
                         {/* Placeholder */}
                         {!remoteVideoReady && (
