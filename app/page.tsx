@@ -34,56 +34,82 @@ export default function Home() {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
     }, [messages])
 
-    // Force video visibility when srcObject is set (since cameras are on but video not showing)
+    // AGGRESSIVE video monitoring and recovery - runs continuously
     useEffect(() => {
+        if (!isMatched) return
+
         const checkVideo = () => {
-            if (remoteVideoRef.current && remoteVideoRef.current.srcObject) {
-                const video = remoteVideoRef.current
-                const stream = video.srcObject as MediaStream
+            if (!remoteVideoRef.current) return
 
-                // Force visibility - CRITICAL for showing video
-                video.style.opacity = '1'
-                video.style.display = 'block'
-                video.style.visibility = 'visible'
-                video.style.zIndex = '15'
+            const video = remoteVideoRef.current
+            const stream = video.srcObject as MediaStream | null
 
-                // Check if video has dimensions (means it's loaded)
-                if (video.videoWidth > 0 && video.videoHeight > 0) {
-                    // CRITICAL: Check if dimensions are suspiciously small (2x2 = no real video)
-                    if (video.videoWidth <= 2 && video.videoHeight <= 2) {
-                        console.error('⚠️⚠️⚠️ VIDEO HAS NO CONTENT! Dimensions:', video.videoWidth, 'x', video.videoHeight)
-                        console.error('Remote peer camera is NOT sending video data!')
-                        console.error('Check remote peer:', {
-                            hasVideoTracks: stream.getVideoTracks().length > 0,
-                            videoTrackEnabled: stream.getVideoTracks()[0]?.enabled,
-                            videoTrackReadyState: stream.getVideoTracks()[0]?.readyState,
-                            videoTrackMuted: stream.getVideoTracks()[0]?.muted
-                        })
-                    } else {
-                        setRemoteVideoReady(true)
-                        console.log('✅✅✅ Video has dimensions, forcing visibility!', {
-                            width: video.videoWidth,
-                            height: video.videoHeight,
-                            readyState: video.readyState,
-                            paused: video.paused
-                        })
-                    }
+            if (!stream) return
+
+            // ALWAYS force visibility - never hide the video element
+            video.style.opacity = '1'
+            video.style.display = 'block'
+            video.style.visibility = 'visible'
+            video.style.zIndex = '15'
+
+            // Check video tracks status
+            const videoTracks = stream.getVideoTracks()
+            const activeTrack = videoTracks.find(t => t.readyState === 'live' && !t.muted)
+
+            if (videoTracks.length > 0) {
+                const track = videoTracks[0]
+
+                // If track is muted or ended, try to recover
+                if (track.readyState === 'ended') {
+                    console.warn('🔄 Track ended - checking for new tracks...')
+                    // Stream will automatically update if new tracks arrive
+                } else if (track.muted) {
+                    console.warn('🔄 Track muted - waiting for unmute...')
+                    // Track might unmute soon
                 }
 
-                // Try to play if paused
-                if (video.paused) {
-                    video.play().catch(err => {
-                        console.log('⚠️ Autoplay blocked, but video is visible:', err)
+                // Log track state periodically
+                if (Math.random() < 0.1) { // 10% of checks
+                    console.log('📊 Track status:', {
+                        enabled: track.enabled,
+                        muted: track.muted,
+                        readyState: track.readyState,
+                        videoWidth: video.videoWidth,
+                        videoHeight: video.videoHeight
                     })
                 }
+            }
+
+            // Check video dimensions
+            if (video.videoWidth > 0 && video.videoHeight > 0) {
+                if (video.videoWidth <= 2 && video.videoHeight <= 2) {
+                    // Video has no content - try to force play anyway
+                    console.warn('⚠️ Video dimensions are 2x2 - attempting recovery...')
+                    if (video.paused) {
+                        video.play().catch(e => console.log('Recovery play failed:', e))
+                    }
+                } else {
+                    // Video has real dimensions - mark as ready
+                    setRemoteVideoReady(true)
+                }
+            }
+
+            // ALWAYS try to play if paused (recovery mechanism)
+            if (video.paused && stream.getVideoTracks().length > 0) {
+                video.play().catch(err => {
+                    // Silently handle autoplay blocks - they're expected
+                    if (err.name !== 'NotAllowedError') {
+                        console.log('Play attempt:', err)
+                    }
+                })
             }
         }
 
         // Check immediately
         checkVideo()
 
-        // Check periodically (every 500ms) to catch stream when it arrives
-        const interval = setInterval(checkVideo, 500)
+        // Check VERY frequently (every 200ms) for aggressive recovery
+        const interval = setInterval(checkVideo, 200)
         return () => clearInterval(interval)
     }, [isMatched, remoteVideoReady])
 
@@ -162,43 +188,75 @@ export default function Home() {
                     label: videoTrack.label
                 })
 
-                // Monitor track state changes
+                // Monitor track state changes - AGGRESSIVE recovery
                 videoTrack.onended = () => {
-                    console.error('❌❌❌ Remote video track ended! This means the remote peer stopped sending video!')
+                    console.error('❌❌❌ Remote video track ended! Attempting recovery...')
                     console.error('Track details:', {
                         id: videoTrack.id,
                         enabled: videoTrack.enabled,
                         readyState: videoTrack.readyState,
                         muted: videoTrack.muted
                     })
-                    // Try to recover by checking if there are other tracks
-                    if (event.streams[0]) {
+                    
+                    // IMMEDIATE recovery attempt
+                    if (event.streams[0] && remoteVideoRef.current) {
                         const otherTracks = event.streams[0].getVideoTracks()
                         console.log('Other video tracks in stream:', otherTracks.length)
-                        if (otherTracks.length > 0 && otherTracks[0] !== videoTrack) {
-                            console.log('🔄 Trying to use another video track...')
-                            // The stream will handle track replacement automatically
+                        
+                        // Find any live track
+                        const liveTrack = otherTracks.find(t => t.readyState === 'live')
+                        if (liveTrack) {
+                            console.log('✅ Found live track, video should continue')
+                            // Stream will automatically update
+                        } else {
+                            console.warn('⚠️ No live tracks - video will be black until new track arrives')
                         }
+                        
+                        // Force video element to stay visible and try to play
+                        const video = remoteVideoRef.current
+                        video.style.opacity = '1'
+                        video.style.display = 'block'
+                        video.style.visibility = 'visible'
+                        
+                        // Try to play even if track ended (might recover)
+                        setTimeout(() => {
+                            if (video.paused && video.srcObject) {
+                                video.play().catch(e => console.log('Recovery play after track end:', e))
+                            }
+                        }, 100)
                     }
                 }
                 videoTrack.onmute = () => {
-                    console.warn('⚠️⚠️⚠️ Remote video track muted! This means the remote peer muted their camera!')
+                    console.warn('⚠️⚠️⚠️ Remote video track muted! Monitoring for recovery...')
                     console.warn('Track details:', {
                         id: videoTrack.id,
                         enabled: videoTrack.enabled,
                         readyState: videoTrack.readyState
                     })
-                    // Check if this is a temporary mute or permanent
-                    setTimeout(() => {
-                        if (videoTrack.muted && remoteVideoRef.current) {
-                            console.warn('⚠️ Track still muted after 2 seconds - remote peer may have disabled camera')
-                            const width = remoteVideoRef.current.videoWidth || 0
-                            const height = remoteVideoRef.current.videoHeight || 0
-                            if (width <= 2 && height <= 2) {
-                                console.error('❌ Video has no content - remote peer camera is not working!')
+                    
+                    // Keep video visible even when muted (might unmute soon)
+                    if (remoteVideoRef.current) {
+                        remoteVideoRef.current.style.opacity = '1'
+                        remoteVideoRef.current.style.display = 'block'
+                        remoteVideoRef.current.style.visibility = 'visible'
+                    }
+                    
+                    // Check periodically if track unmutes
+                    const checkUnmute = setInterval(() => {
+                        if (!videoTrack.muted) {
+                            console.log('✅✅✅ Track unmuted! Video should appear now!')
+                            clearInterval(checkUnmute)
+                            if (remoteVideoRef.current) {
+                                remoteVideoRef.current.play().catch(e => console.log('Play after unmute:', e))
                             }
+                        } else if (videoTrack.readyState === 'ended') {
+                            console.warn('Track ended while muted')
+                            clearInterval(checkUnmute)
                         }
-                    }, 2000)
+                    }, 500)
+                    
+                    // Stop checking after 10 seconds
+                    setTimeout(() => clearInterval(checkUnmute), 10000)
                 }
                 videoTrack.onunmute = () => {
                     console.log('✅ Remote video track unmuted!')
@@ -217,23 +275,40 @@ export default function Home() {
                     return
                 }
 
-                const activeVideoTrack = videoTracks.find(t => t.enabled && t.readyState === 'live')
+                // Accept ANY live track, even if muted (it might unmute)
+                const activeVideoTrack = videoTracks.find(t => t.readyState === 'live')
                 if (!activeVideoTrack) {
-                    console.error('❌❌❌ ERROR: No active video track found in stream!')
-                    console.log('Available tracks:', videoTracks.map(t => ({
-                        enabled: t.enabled,
-                        readyState: t.readyState,
-                        muted: t.muted
-                    })))
-                    return
+                    // If no live track, check if any track exists (might become live)
+                    const anyTrack = videoTracks[0]
+                    if (anyTrack) {
+                        console.warn('⚠️ No live track yet, but track exists. State:', {
+                            enabled: anyTrack.enabled,
+                            readyState: anyTrack.readyState,
+                            muted: anyTrack.muted
+                        })
+                        console.log('🔄 Will set stream anyway - track might become live')
+                        // Continue - set stream and wait for track to become live
+                    } else {
+                        console.error('❌❌❌ ERROR: Stream has NO video tracks at all!')
+                        console.log('Available tracks:', videoTracks.map(t => ({
+                            enabled: t.enabled,
+                            readyState: t.readyState,
+                            muted: t.muted
+                        })))
+                        return
+                    }
                 }
 
-                console.log('✅ Found active video track:', {
-                    id: activeVideoTrack.id,
-                    enabled: activeVideoTrack.enabled,
-                    readyState: activeVideoTrack.readyState,
-                    muted: activeVideoTrack.muted
-                })
+                if (activeVideoTrack) {
+                    console.log('✅ Found video track:', {
+                        id: activeVideoTrack.id,
+                        enabled: activeVideoTrack.enabled,
+                        readyState: activeVideoTrack.readyState,
+                        muted: activeVideoTrack.muted
+                    })
+                } else {
+                    console.log('⚠️ No active track yet, but proceeding with stream setup')
+                }
 
                 // CRITICAL: Check if video element still exists
                 if (!remoteVideoRef.current) {
@@ -241,9 +316,17 @@ export default function Home() {
                     return
                 }
 
-                // Set stream (only once)
-                if (!remoteVideoRef.current.srcObject) {
-                    console.log('Setting srcObject for the first time...')
+                // Set stream - ALWAYS update if stream changed (even if srcObject exists)
+                const currentStream = remoteVideoRef.current.srcObject as MediaStream | null
+                const newStream = event.streams[0]
+                const streamChanged = !currentStream || currentStream.id !== newStream.id
+                
+                if (!remoteVideoRef.current.srcObject || streamChanged) {
+                    if (streamChanged && currentStream) {
+                        console.log('⚠️ Stream changed! Updating srcObject...')
+                    } else {
+                        console.log('Setting srcObject for the first time...')
+                    }
 
                     // CRITICAL: Make video visible FIRST before setting srcObject
                     // Hidden elements can't load MediaStreams properly
@@ -254,11 +337,28 @@ export default function Home() {
                         console.log('✅ Made video visible BEFORE setting stream')
                     }
 
-                    // NOW set the stream
+                    // NOW set the stream - ALWAYS set, even if muted (will unmute)
                     remoteVideoRef.current.srcObject = event.streams[0]
 
                     // CRITICAL: Update state so opacity calculation works during render
                     setHasRemoteStream(true)
+                    
+                    // Monitor for track state changes on the new stream
+                    const newVideoTracks = event.streams[0].getVideoTracks()
+                    newVideoTracks.forEach(track => {
+                        // Set up handlers for this track
+                        track.onunmute = () => {
+                            console.log('✅✅✅ Track unmuted! Forcing video visibility!')
+                            if (remoteVideoRef.current) {
+                                remoteVideoRef.current.style.opacity = '1'
+                                remoteVideoRef.current.style.display = 'block'
+                                remoteVideoRef.current.style.visibility = 'visible'
+                                remoteVideoRef.current.play().catch(e => console.log('Play after unmute:', e))
+                                setHasRemoteStream(true)
+                                setRemoteVideoReady(true)
+                            }
+                        }
+                    })
 
                     // Verify srcObject was set
                     console.log('✅ srcObject set:', {
@@ -307,7 +407,7 @@ export default function Home() {
                                 const width = remoteVideoRef.current?.videoWidth || 0
                                 const height = remoteVideoRef.current?.videoHeight || 0
                                 console.log('Video dimensions:', width, 'x', height)
-                                
+
                                 // CRITICAL: Check if video has actual dimensions
                                 if (width <= 2 && height <= 2) {
                                     console.error('⚠️⚠️⚠️ VIDEO HAS NO CONTENT! Dimensions are only', width, 'x', height)
@@ -318,7 +418,7 @@ export default function Home() {
                                     console.error('3. WebRTC connection issue')
                                     console.error('4. Remote video track ended or muted')
                                 }
-                                
+
                                 setShowPlayButton(false)
                             })
                             .catch((error) => {
