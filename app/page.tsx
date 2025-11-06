@@ -394,12 +394,15 @@ export default function Home() {
                     </div>
                 </div>
 
-                {/* Video Container - ALWAYS in DOM, never display:none */}
+                {/* Video Container - ALWAYS in DOM, never display:none (breaks MediaStream loading) */}
                 <div
                     className="mb-4 bg-black rounded-lg overflow-hidden relative cursor-pointer"
                     style={{ 
                         aspectRatio: '16/9',
-                        display: isMatched ? 'block' : 'none' // Hide container when not matched
+                        display: 'block', // Always block - never none (MediaStreams need visible parent)
+                        opacity: isMatched ? '1' : '0', // Hide visually but keep in DOM
+                        pointerEvents: isMatched ? 'auto' : 'none',
+                        height: isMatched ? 'auto' : '0' // Collapse when not matched
                     }}
                     onClick={() => {
                         // Make entire video area clickable to start playback
