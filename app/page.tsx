@@ -45,7 +45,22 @@ export default function Home() {
             console.log('📥 Received remote track')
             if (remoteVideoRef.current && event.streams[0]) {
                 remoteVideoRef.current.srcObject = event.streams[0]
-                setRemoteVideoReady(true)
+
+                // Force play the video
+                remoteVideoRef.current.play()
+                    .then(() => {
+                        console.log('✅ Remote video playing!')
+                        setRemoteVideoReady(true)
+                    })
+                    .catch((error) => {
+                        console.error('Error playing remote video:', error)
+                        // Try again after a short delay
+                        setTimeout(() => {
+                            if (remoteVideoRef.current) {
+                                remoteVideoRef.current.play().catch(e => console.error('Retry failed:', e))
+                            }
+                        }, 500)
+                    })
             }
         }
 
@@ -73,6 +88,7 @@ export default function Home() {
             localStreamRef.current = stream
             if (localVideoRef.current) {
                 localVideoRef.current.srcObject = stream
+                localVideoRef.current.play().catch(e => console.error('Local video play error:', e))
             }
 
             const pc = createPeerConnection()
@@ -113,29 +129,29 @@ export default function Home() {
             stopVideo()
         })
 
-    newSocket.on('matched', async (data: { strangerId: string }) => {
-      console.log('✅ Matched with:', data.strangerId)
-      setIsSearching(false)
-      setIsMatched(true)
-      setStrangerId(data.strangerId)
-      setMessages([{ id: uuidv4(), text: '🎥 Starting video...', sender: 'stranger' }])
+        newSocket.on('matched', async (data: { strangerId: string }) => {
+            console.log('✅ Matched with:', data.strangerId)
+            setIsSearching(false)
+            setIsMatched(true)
+            setStrangerId(data.strangerId)
+            setMessages([{ id: uuidv4(), text: '🎥 Starting video...', sender: 'stranger' }])
 
-      // Auto-start video
-      await startVideo()
-      
-      // Only the user with smaller ID creates the offer (prevents glare)
-      const shouldCreateOffer = userId.current < data.strangerId
-      console.log('Should I create offer?', shouldCreateOffer, '(me:', userId.current, 'vs', data.strangerId, ')')
-      
-      if (shouldCreateOffer && peerConnectionRef.current) {
-        const offer = await peerConnectionRef.current.createOffer()
-        await peerConnectionRef.current.setLocalDescription(offer)
-        newSocket.emit('webrtc-offer', { offer, to: data.strangerId })
-        console.log('📤 Sent offer')
-      } else {
-        console.log('⏳ Waiting for offer from stranger')
-      }
-    })
+            // Auto-start video
+            await startVideo()
+
+            // Only the user with smaller ID creates the offer (prevents glare)
+            const shouldCreateOffer = userId.current < data.strangerId
+            console.log('Should I create offer?', shouldCreateOffer, '(me:', userId.current, 'vs', data.strangerId, ')')
+
+            if (shouldCreateOffer && peerConnectionRef.current) {
+                const offer = await peerConnectionRef.current.createOffer()
+                await peerConnectionRef.current.setLocalDescription(offer)
+                newSocket.emit('webrtc-offer', { offer, to: data.strangerId })
+                console.log('📤 Sent offer')
+            } else {
+                console.log('⏳ Waiting for offer from stranger')
+            }
+        })
 
         newSocket.on('webrtc-offer', async (data: { offer: RTCSessionDescriptionInit; from: string }) => {
             console.log('📨 Received offer')
@@ -224,24 +240,24 @@ export default function Home() {
                 {/* Video Container */}
                 {isMatched && (
                     <div className="mb-4 bg-black rounded-lg overflow-hidden relative" style={{ aspectRatio: '16/9' }}>
-                        {/* Remote Video */}
-                        <video
-                            ref={remoteVideoRef}
-                            autoPlay
-                            playsInline
-                            className="w-full h-full object-cover"
-                            style={{ display: remoteVideoReady ? 'block' : 'none' }}
-                        />
+            {/* Remote Video */}
+            <video
+              ref={remoteVideoRef}
+              autoPlay
+              playsInline
+              muted={false}
+              className="w-full h-full object-cover bg-black"
+            />
 
-                        {/* Placeholder */}
-                        {!remoteVideoReady && (
-                            <div className="absolute inset-0 flex items-center justify-center bg-gray-800">
-                                <div className="text-center">
-                                    <div className="text-6xl mb-4">👤</div>
-                                    <p>Waiting for stranger's video...</p>
-                                </div>
-                            </div>
-                        )}
+            {/* Placeholder */}
+            {!remoteVideoReady && (
+              <div className="absolute inset-0 flex items-center justify-center bg-gray-800 z-10">
+                <div className="text-center">
+                  <div className="text-6xl mb-4">👤</div>
+                  <p>Waiting for stranger's video...</p>
+                </div>
+              </div>
+            )}
 
                         {/* Local Video (PIP) */}
                         <div className="absolute bottom-4 right-4 w-48 h-36 rounded-lg overflow-hidden border-2 border-white shadow-lg bg-black">
