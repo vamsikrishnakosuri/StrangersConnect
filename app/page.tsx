@@ -42,80 +42,119 @@ export default function Home() {
             ],
         })
 
-    pc.ontrack = (event) => {
-      console.log('📥 Received remote track:', event.track.kind, event.track.readyState)
-      console.log('📊 Track details:', {
-        enabled: event.track.enabled,
-        muted: event.track.muted,
-        readyState: event.track.readyState,
-        streams: event.streams.length
-      })
-      
-      if (event.track.kind === 'video' && remoteVideoRef.current && event.streams[0]) {
-        console.log('🎥 Setting remote VIDEO stream')
-        console.log('Stream ID:', event.streams[0].id)
-        console.log('Video tracks in stream:', event.streams[0].getVideoTracks().length)
-        
-        // CRITICAL: Check if video element still exists
-        if (!remoteVideoRef.current) {
-          console.error('❌❌❌ remoteVideoRef.current is NULL! Video element was removed!')
-          return
-        }
-        
+        pc.ontrack = (event) => {
+            console.log('📥 Received remote track:', event.track.kind, event.track.readyState)
+            console.log('📊 Track details:', {
+                enabled: event.track.enabled,
+                muted: event.track.muted,
+                readyState: event.track.readyState,
+                streams: event.streams.length
+            })
+
+            if (event.track.kind === 'video' && remoteVideoRef.current && event.streams[0]) {
+                console.log('🎥 Setting remote VIDEO stream')
+                console.log('Stream ID:', event.streams[0].id)
+                console.log('Video tracks in stream:', event.streams[0].getVideoTracks().length)
+
+                // CRITICAL: Check if video element still exists
+                if (!remoteVideoRef.current) {
+                    console.error('❌❌❌ remoteVideoRef.current is NULL! Video element was removed!')
+                    return
+                }
+
         // Set stream (only once)
         if (!remoteVideoRef.current.srcObject) {
           console.log('Setting srcObject for the first time...')
           remoteVideoRef.current.srcObject = event.streams[0]
           
-          // CRITICAL: Wait for metadata to load
-          remoteVideoRef.current.onloadedmetadata = () => {
-            console.log('✅✅✅ METADATA LOADED ✅✅✅')
-            console.log('Video readyState:', remoteVideoRef.current?.readyState)
-            console.log('Video dimensions:', remoteVideoRef.current?.videoWidth, 'x', remoteVideoRef.current?.videoHeight)
-            
-            if (remoteVideoRef.current) {
-              remoteVideoRef.current.play()
-                .then(() => {
-                  console.log('✅✅✅ REMOTE VIDEO PLAYING! ✅✅✅')
-                  setRemoteVideoReady(true)
-                  setShowPlayButton(false)
-                })
-                .catch((error) => {
-                  console.error('❌ Play failed after metadata:', error)
-                  const errorObj = error as Error
-                  if (errorObj.name === 'NotAllowedError') {
-                    console.warn('⚠️ Autoplay blocked - showing play button')
-                    setShowPlayButton(true)
-                  }
-                })
+          // CRITICAL: Multiple ways to detect when video is ready
+          // For MediaStreams, onloadedmetadata might not fire, so we use oncanplay
+          const tryPlayVideo = () => {
+            if (!remoteVideoRef.current) {
+              console.error('❌ Video ref is null in tryPlayVideo')
+              return
             }
+            
+            console.log('Attempting to play video...')
+            console.log('Current readyState:', remoteVideoRef.current.readyState)
+            console.log('Current dimensions:', remoteVideoRef.current.videoWidth, 'x', remoteVideoRef.current.videoHeight)
+            
+            remoteVideoRef.current.play()
+              .then(() => {
+                console.log('✅✅✅ REMOTE VIDEO PLAYING! ✅✅✅')
+                setRemoteVideoReady(true)
+                setShowPlayButton(false)
+              })
+              .catch((error) => {
+                console.error('❌ Play failed:', error)
+                const errorObj = error as Error
+                if (errorObj.name === 'NotAllowedError') {
+                  console.warn('⚠️ Autoplay blocked - showing play button')
+                  setShowPlayButton(true)
+                } else {
+                  // Retry after short delay
+                  setTimeout(() => tryPlayVideo(), 500)
+                }
+              })
           }
           
-          // Also check current state
-          console.log('✅ srcObject set, checking:', {
-            hasSrcObject: !!remoteVideoRef.current.srcObject,
-            videoWidth: remoteVideoRef.current.videoWidth,
-            videoHeight: remoteVideoRef.current.videoHeight,
-            readyState: remoteVideoRef.current.readyState,
-            paused: remoteVideoRef.current.paused
-          })
+          // Method 1: onloadedmetadata (for some browsers)
+          remoteVideoRef.current.onloadedmetadata = () => {
+            console.log('✅✅✅ METADATA LOADED (onloadedmetadata) ✅✅✅')
+            tryPlayVideo()
+          }
           
-          // Make sure it's visible
-          if (remoteVideoRef.current) {
-            remoteVideoRef.current.style.display = 'block'
-            remoteVideoRef.current.style.opacity = '1'
-            remoteVideoRef.current.style.visibility = 'visible'
-            console.log('✅ Forced video visibility')
+          // Method 2: oncanplay (more reliable for MediaStreams)
+          remoteVideoRef.current.oncanplay = () => {
+            console.log('✅✅✅ CAN PLAY (oncanplay) ✅✅✅')
+            tryPlayVideo()
           }
-        } else {
-          console.log('⚠️ srcObject already set, checking if it changed...')
-          if (remoteVideoRef.current.srcObject !== event.streams[0]) {
-            console.warn('⚠️ Stream changed! Updating...')
-            remoteVideoRef.current.srcObject = event.streams[0]
+          
+          // Method 3: onloadeddata (another fallback)
+          remoteVideoRef.current.onloadeddata = () => {
+            console.log('✅✅✅ DATA LOADED (onloadeddata) ✅✅✅')
+            tryPlayVideo()
           }
+          
+          // Method 4: Check readyState after delay (fallback)
+          setTimeout(() => {
+            if (remoteVideoRef.current && remoteVideoRef.current.readyState >= 2) {
+              console.log('✅✅✅ READY STATE >= 2 (fallback) ✅✅✅')
+              tryPlayVideo()
+            } else {
+              console.warn('⚠️ Video not ready after 1 second, readyState:', remoteVideoRef.current?.readyState)
+              // Still try to play - might work
+              if (remoteVideoRef.current) {
+                tryPlayVideo()
+              }
+            }
+          }, 1000)
+
+                    // Also check current state
+                    console.log('✅ srcObject set, checking:', {
+                        hasSrcObject: !!remoteVideoRef.current.srcObject,
+                        videoWidth: remoteVideoRef.current.videoWidth,
+                        videoHeight: remoteVideoRef.current.videoHeight,
+                        readyState: remoteVideoRef.current.readyState,
+                        paused: remoteVideoRef.current.paused
+                    })
+
+                    // Make sure it's visible
+                    if (remoteVideoRef.current) {
+                        remoteVideoRef.current.style.display = 'block'
+                        remoteVideoRef.current.style.opacity = '1'
+                        remoteVideoRef.current.style.visibility = 'visible'
+                        console.log('✅ Forced video visibility')
+                    }
+                } else {
+                    console.log('⚠️ srcObject already set, checking if it changed...')
+                    if (remoteVideoRef.current.srcObject !== event.streams[0]) {
+                        console.warn('⚠️ Stream changed! Updating...')
+                        remoteVideoRef.current.srcObject = event.streams[0]
+                    }
+                }
+            }
         }
-      }
-    }
 
         pc.onicecandidate = (event) => {
             if (event.candidate && socket && strangerId) {
@@ -399,10 +438,10 @@ export default function Home() {
                                 zIndex: 1
                             }}
                             onLoadedMetadata={() => {
-                              console.log('🎥 Video metadata loaded in DOM')
+                                console.log('🎥 Video metadata loaded in DOM')
                             }}
                             onCanPlay={() => {
-                              console.log('🎥 Video can play')
+                                console.log('🎥 Video can play')
                             }}
                         />
 
