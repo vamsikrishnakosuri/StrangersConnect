@@ -1,9 +1,17 @@
 import { Server } from 'socket.io'
 import { createServer } from 'http'
 import express from 'express'
+import cors from 'cors'
 import { ExpressPeerServer } from 'peer'
 
 const app = express()
+
+// Enable CORS for Express routes
+app.use(cors({
+  origin: '*',
+  credentials: true,
+}))
+
 const httpServer = createServer(app)
 
 // PeerJS server for WebRTC signaling
@@ -12,6 +20,15 @@ const peerServer = ExpressPeerServer(httpServer, {
 })
 
 app.use('/peerjs', peerServer)
+
+// Health check endpoint
+app.get('/', (req, res) => {
+  res.json({ status: 'ok', message: 'StrangersConnect Server Running' })
+})
+
+app.get('/health', (req, res) => {
+  res.json({ status: 'healthy' })
+})
 
 peerServer.on('connection', (client) => {
   console.log('PeerJS client connected:', client.getId())

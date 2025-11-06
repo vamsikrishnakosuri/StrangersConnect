@@ -19,8 +19,7 @@ export default function Home() {
     const [isMatched, setIsMatched] = useState(false)
     const [messages, setMessages] = useState<Message[]>([])
     const [messageInput, setMessageInput] = useState('')
-    const [strangerId, setStrangerId] = useState<string | null>(null)
-    const [chatMode, setChatMode] = useState<'text' | 'video'>('text')
+  const [strangerId, setStrangerId] = useState<string | null>(null)
 
     // Video chat state
     const [isVideoEnabled, setIsVideoEnabled] = useState(false)
@@ -178,61 +177,56 @@ export default function Home() {
         }
     }
 
-    // Toggle audio
-    const toggleAudio = () => {
-        if (localStreamRef.current) {
-            const audioTrack = localStreamRef.current.getAudioTracks()[0]
-            if (audioTrack) {
-                audioTrack.enabled = !audioTrack.enabled
-                setIsAudioEnabled(audioTrack.enabled)
-            }
-        }
+  // Toggle audio
+  const toggleAudio = () => {
+    if (localStreamRef.current) {
+      const audioTrack = localStreamRef.current.getAudioTracks()[0]
+      if (audioTrack) {
+        audioTrack.enabled = !audioTrack.enabled
+        setIsAudioEnabled(audioTrack.enabled)
+      }
     }
+  }
 
-    // Switch chat mode
-    const switchChatMode = async (mode: 'text' | 'video') => {
-        setChatMode(mode)
-
-        if (mode === 'video' && isMatched && strangerId) {
-            try {
-                console.log('🎥 Switching to video mode...')
-
-                // Start local stream
-                if (!localStreamRef.current) {
-                    await startLocalStream()
-                }
-
-                // Call the stranger using PeerJS
-                if (peerRef.current && localStreamRef.current && strangerId) {
-                    console.log('📞 Calling stranger:', strangerId)
-                    const call = peerRef.current.call(strangerId, localStreamRef.current)
-
-                    call.on('stream', (remoteStream) => {
-                        console.log('🎥 Received remote stream!')
-                        if (remoteVideoRef.current) {
-                            remoteVideoRef.current.srcObject = remoteStream
-                            remoteVideoRef.current.play()
-                                .then(() => {
-                                    console.log('✅ Remote video playing!')
-                                    setRemoteVideoEnabled(true)
-                                })
-                                .catch((error) => {
-                                    console.error('Error playing remote video:', error)
-                                })
-                        }
-                    })
-
-                    callRef.current = call
-                }
-            } catch (error) {
-                console.error('Error switching to video mode:', error)
-                alert('Failed to start video: ' + (error instanceof Error ? error.message : 'Unknown error'))
-            }
-        } else if (mode === 'text') {
-            stopLocalStream()
-            setRemoteVideoEnabled(false)
-        }
+  // Start video call (auto-triggered on match)
+  const startVideoCall = async () => {
+    if (!isMatched || !strangerId) return
+    
+    try {
+      console.log('🎥 Starting video call...')
+      
+      // Start local stream
+      if (!localStreamRef.current) {
+        await startLocalStream()
+      }
+      
+      // Call the stranger using PeerJS
+      if (peerRef.current && localStreamRef.current && strangerId) {
+        console.log('📞 Calling stranger:', strangerId)
+        const call = peerRef.current.call(strangerId, localStreamRef.current)
+        
+        call.on('stream', (remoteStream) => {
+          console.log('🎥 Received remote stream!')
+          if (remoteVideoRef.current) {
+            remoteVideoRef.current.srcObject = remoteStream
+            remoteVideoRef.current.play()
+              .then(() => {
+                console.log('✅ Remote video playing!')
+                setRemoteVideoEnabled(true)
+              })
+              .catch((error) => {
+                console.error('Error playing remote video:', error)
+              })
+          }
+        })
+        
+        callRef.current = call
+      }
+    } catch (error) {
+      console.error('Error starting video call:', error)
+      alert('Failed to start video: ' + (error instanceof Error ? error.message : 'Unknown error'))
     }
+  }
 
     // Socket.io for chat matching
     useEffect(() => {
@@ -253,18 +247,21 @@ export default function Home() {
             stopLocalStream()
         })
 
-        newSocket.on('matched', async (data: { strangerId: string }) => {
-            console.log('✅ Match found! Stranger ID:', data.strangerId)
-            setIsSearching(false)
-            setIsMatched(true)
-            setStrangerId(data.strangerId)
-            setMessages([{
-                id: uuidv4(),
-                text: 'You are now connected! Say hello 👋',
-                sender: 'stranger',
-                timestamp: new Date(),
-            }])
-        })
+    newSocket.on('matched', async (data: { strangerId: string }) => {
+      console.log('✅ Match found! Stranger ID:', data.strangerId)
+      setIsSearching(false)
+      setIsMatched(true)
+      setStrangerId(data.strangerId)
+      setMessages([{
+        id: uuidv4(),
+        text: 'You are now connected! Starting video... 🎥',
+        sender: 'stranger',
+        timestamp: new Date(),
+      }])
+      
+      // Auto-start video like Omegle
+      setTimeout(() => startVideoCall(), 500)
+    })
 
         newSocket.on('disconnected', () => {
             setIsMatched(false)
@@ -392,8 +389,8 @@ export default function Home() {
                     </div>
                 )}
 
-                {/* Video Chat Container */}
-                {chatMode === 'video' && isMatched && (
+        {/* Video Chat Container - Always shown when matched */}
+        {isMatched && (
                     <div className="mb-4 bg-black rounded-lg overflow-hidden relative" style={{ aspectRatio: '16/9' }}>
                         {/* Remote Video */}
                         <video
@@ -417,8 +414,8 @@ export default function Home() {
                             </div>
                         )}
 
-                        {/* Local Video (Picture-in-Picture) */}
-                        {chatMode === 'video' && (
+            {/* Local Video (Picture-in-Picture) */}
+            {isMatched && (
                             <div className="absolute bottom-4 right-4 w-48 h-36 rounded-lg overflow-hidden border-2 border-white shadow-lg bg-black z-20">
                                 <video
                                     ref={localVideoRef}
