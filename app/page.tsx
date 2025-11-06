@@ -108,32 +108,15 @@ export default function Home() {
     const createPeerConnection = (currentSocket: Socket | null, currentStrangerId: string | null) => {
         const pc = new RTCPeerConnection({
             iceServers: [
-                // STUN servers for NAT discovery
+                // STUN servers for NAT discovery (works for most same-network connections)
                 { urls: 'stun:stun.l.google.com:19302' },
                 { urls: 'stun:stun1.l.google.com:19302' },
-                // TURN servers for relay (works behind symmetric NATs, corporate firewalls)
-                // Using OpenRelay's free TURN servers
-                {
-                    urls: [
-                        'turn:openrelay.metered.ca:80',
-                        'turn:openrelay.metered.ca:443',
-                        'turn:openrelay.metered.ca:80?transport=tcp',
-                        'turn:openrelay.metered.ca:443?transport=tcp',
-                    ],
-                    username: 'openrelayproject',
-                    credential: 'openrelayproject',
-                },
-                // Fallback TURN servers
-                {
-                    urls: [
-                        'turn:relay.metered.ca:80',
-                        'turn:relay.metered.ca:443',
-                    ],
-                    username: 'openrelayproject',
-                    credential: 'openrelayproject',
-                },
+                { urls: 'stun:stun2.l.google.com:19302' },
+                // Note: TURN servers removed due to timeout issues
+                // For production, you'll need to set up your own TURN server
+                // STUN-only should work for same-network connections
             ],
-            iceTransportPolicy: 'all', // Try both relay and direct connections
+            iceTransportPolicy: 'all', // Try all connection types
         })
 
         // WebRTC Connection State Monitoring - ICE Candidates
@@ -532,10 +515,10 @@ export default function Home() {
         pc.onicecandidate = (event) => {
             if (event.candidate) {
                 // Check if this is a relay candidate (TURN)
-                const isRelay = event.candidate.candidate.includes('relay') || 
-                                event.candidate.candidate.includes('typ relay')
+                const isRelay = event.candidate.candidate.includes('relay') ||
+                    event.candidate.candidate.includes('typ relay')
                 const candidateType = isRelay ? '🔄 RELAY (TURN)' : '📡 DIRECT/STUN'
-                
+
                 console.log(`🧊 ICE candidate generated (${candidateType}):`, {
                     candidate: event.candidate.candidate.substring(0, 80) + '...',
                     sdpMLineIndex: event.candidate.sdpMLineIndex,
@@ -734,7 +717,10 @@ export default function Home() {
                 }
             }
 
-            // Send any queued ICE candidates now that we have strangerId
+            // Wait a moment to ensure peer connection is fully set up
+            await new Promise(resolve => setTimeout(resolve, 300))
+
+            // CRITICAL: Send any queued ICE candidates now that we have strangerId and socket
             if (pendingIceCandidatesRef.current.length > 0) {
                 console.log(`📤 Sending ${pendingIceCandidatesRef.current.length} queued ICE candidates`)
                 pendingIceCandidatesRef.current.forEach(candidate => {
@@ -742,12 +728,10 @@ export default function Home() {
                         candidate: candidate,
                         to: data.strangerId,
                     })
+                    console.log('📤 Sent queued ICE candidate')
                 })
                 pendingIceCandidatesRef.current = []
             }
-
-            // Wait a moment to ensure peer connection is fully set up
-            await new Promise(resolve => setTimeout(resolve, 300))
 
             // Only the user with smaller ID creates the offer (prevents glare)
             const shouldCreateOffer = userId.current < data.strangerId
