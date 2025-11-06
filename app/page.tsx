@@ -590,17 +590,26 @@ export default function Home() {
               </div>
             )}
 
-            {/* Local Video (Picture-in-Picture) */}
-            {localStreamRef.current && (
-              <div className="absolute bottom-4 right-4 w-48 h-36 rounded-lg overflow-hidden border-2 border-white shadow-lg bg-black">
+            {/* Local Video (Picture-in-Picture) - Always show when in video mode */}
+            {chatMode === 'video' && (
+              <div className="absolute bottom-4 right-4 w-48 h-36 rounded-lg overflow-hidden border-2 border-white shadow-lg bg-black z-20">
                 <video
                   ref={localVideoRef}
                   autoPlay
                   playsInline
                   muted
                   className="w-full h-full object-cover"
-                  style={{ backgroundColor: 'black' }}
+                  style={{ 
+                    backgroundColor: 'black',
+                    display: localStreamRef.current ? 'block' : 'none',
+                    transform: 'scaleX(-1)', // Mirror effect like front camera
+                  }}
                 />
+                {!localStreamRef.current && (
+                  <div className="absolute inset-0 flex items-center justify-center text-white text-xs bg-black">
+                    Camera starting...
+                  </div>
+                )}
               </div>
             )}
 
