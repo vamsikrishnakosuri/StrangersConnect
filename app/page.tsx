@@ -17,9 +17,9 @@ export default function Home() {
     const [isMatched, setIsMatched] = useState(false)
     const [messages, setMessages] = useState<Message[]>([])
     const [messageInput, setMessageInput] = useState('')
-  const [strangerId, setStrangerId] = useState<string | null>(null)
-  const [remoteVideoReady, setRemoteVideoReady] = useState(false)
-  const [showPlayButton, setShowPlayButton] = useState(false)
+    const [strangerId, setStrangerId] = useState<string | null>(null)
+    const [remoteVideoReady, setRemoteVideoReady] = useState(false)
+    const [showPlayButton, setShowPlayButton] = useState(false)
 
     const userId = useRef(uuidv4())
     const localVideoRef = useRef<HTMLVideoElement>(null)
@@ -42,80 +42,80 @@ export default function Home() {
             ],
         })
 
-        pc.ontrack = (event) => {
-            console.log('📥 Received remote track:', event.track.kind, event.track.readyState)
-
-            if (event.track.kind === 'video' && remoteVideoRef.current && event.streams[0]) {
-                console.log('🎥 Setting remote VIDEO stream')
-                console.log('Stream ID:', event.streams[0].id)
-                console.log('Video tracks in stream:', event.streams[0].getVideoTracks().length)
-
-                // Set stream (only once)
-                if (!remoteVideoRef.current.srcObject) {
-                    remoteVideoRef.current.srcObject = event.streams[0]
-                    console.log('✅ srcObject set, checking:', {
-                        hasSrcObject: !!remoteVideoRef.current.srcObject,
-                        videoWidth: remoteVideoRef.current.videoWidth,
-                        videoHeight: remoteVideoRef.current.videoHeight,
-                        readyState: remoteVideoRef.current.readyState
-                    })
-
-                    setRemoteVideoReady(true)
-
-                    // Make sure it's visible FIRST
-                    if (remoteVideoRef.current) {
-                        remoteVideoRef.current.style.display = 'block'
-                        remoteVideoRef.current.style.opacity = '1'
-                        remoteVideoRef.current.style.visibility = 'visible'
-                        console.log('✅ Forced video visibility')
-                    }
-
-                    // Try play with detailed logging
-                    const attemptPlay = async () => {
-                        if (!remoteVideoRef.current) {
-                            console.error('❌ remoteVideoRef is null!')
-                            return
-                        }
-
-                        try {
-                            await remoteVideoRef.current.play()
-                            console.log('✅✅✅ REMOTE VIDEO PLAYING! ✅✅✅')
-                            console.log('Video dimensions:', remoteVideoRef.current.videoWidth, 'x', remoteVideoRef.current.videoHeight)
-                        } catch (error) {
-                            console.error('❌ Play failed:', error)
-
-                            const errorObj = error as Error
-                            const errorName = errorObj.name || 'Unknown'
-                            const errorMessage = errorObj.message || String(error)
-
-                            console.error('Error name:', errorName)
-                            console.error('Error message:', errorMessage)
-
-              // If autoplay policy issue, show play button
-              if (errorName === 'NotAllowedError') {
-                console.warn('⚠️ Autoplay blocked - showing play button')
-                setShowPlayButton(true)
-              }
-
-                            // Retry once after delay
-                            setTimeout(() => {
-                                if (remoteVideoRef.current && remoteVideoRef.current.paused) {
-                                    console.log('🔄 Retrying play()...')
-                                    remoteVideoRef.current.play()
-                                        .then(() => console.log('✅ Retry play succeeded!'))
-                                        .catch(e2 => console.error('❌ Retry play failed:', e2))
-                                }
-                            }, 1000)
-                        }
-                    }
-
-                    // Try play immediately
-                    attemptPlay()
-                } else {
-                    console.log('⚠️ srcObject already set, skipping')
-                }
-            }
+    pc.ontrack = (event) => {
+      console.log('📥 Received remote track:', event.track.kind, event.track.readyState)
+      console.log('📊 Track details:', {
+        enabled: event.track.enabled,
+        muted: event.track.muted,
+        readyState: event.track.readyState,
+        streams: event.streams.length
+      })
+      
+      if (event.track.kind === 'video' && remoteVideoRef.current && event.streams[0]) {
+        console.log('🎥 Setting remote VIDEO stream')
+        console.log('Stream ID:', event.streams[0].id)
+        console.log('Video tracks in stream:', event.streams[0].getVideoTracks().length)
+        
+        // CRITICAL: Check if video element still exists
+        if (!remoteVideoRef.current) {
+          console.error('❌❌❌ remoteVideoRef.current is NULL! Video element was removed!')
+          return
         }
+        
+        // Set stream (only once)
+        if (!remoteVideoRef.current.srcObject) {
+          console.log('Setting srcObject for the first time...')
+          remoteVideoRef.current.srcObject = event.streams[0]
+          
+          // CRITICAL: Wait for metadata to load
+          remoteVideoRef.current.onloadedmetadata = () => {
+            console.log('✅✅✅ METADATA LOADED ✅✅✅')
+            console.log('Video readyState:', remoteVideoRef.current?.readyState)
+            console.log('Video dimensions:', remoteVideoRef.current?.videoWidth, 'x', remoteVideoRef.current?.videoHeight)
+            
+            if (remoteVideoRef.current) {
+              remoteVideoRef.current.play()
+                .then(() => {
+                  console.log('✅✅✅ REMOTE VIDEO PLAYING! ✅✅✅')
+                  setRemoteVideoReady(true)
+                  setShowPlayButton(false)
+                })
+                .catch((error) => {
+                  console.error('❌ Play failed after metadata:', error)
+                  const errorObj = error as Error
+                  if (errorObj.name === 'NotAllowedError') {
+                    console.warn('⚠️ Autoplay blocked - showing play button')
+                    setShowPlayButton(true)
+                  }
+                })
+            }
+          }
+          
+          // Also check current state
+          console.log('✅ srcObject set, checking:', {
+            hasSrcObject: !!remoteVideoRef.current.srcObject,
+            videoWidth: remoteVideoRef.current.videoWidth,
+            videoHeight: remoteVideoRef.current.videoHeight,
+            readyState: remoteVideoRef.current.readyState,
+            paused: remoteVideoRef.current.paused
+          })
+          
+          // Make sure it's visible
+          if (remoteVideoRef.current) {
+            remoteVideoRef.current.style.display = 'block'
+            remoteVideoRef.current.style.opacity = '1'
+            remoteVideoRef.current.style.visibility = 'visible'
+            console.log('✅ Forced video visibility')
+          }
+        } else {
+          console.log('⚠️ srcObject already set, checking if it changed...')
+          if (remoteVideoRef.current.srcObject !== event.streams[0]) {
+            console.warn('⚠️ Stream changed! Updating...')
+            remoteVideoRef.current.srcObject = event.streams[0]
+          }
+        }
+      }
+    }
 
         pc.onicecandidate = (event) => {
             if (event.candidate && socket && strangerId) {
@@ -365,22 +365,22 @@ export default function Home() {
 
                 {/* Video Container */}
                 {isMatched && (
-                    <div 
-                      className="mb-4 bg-black rounded-lg overflow-hidden relative cursor-pointer" 
-                      style={{ aspectRatio: '16/9' }}
-                      onClick={() => {
-                        // Make entire video area clickable to start playback
-                        if (remoteVideoRef.current && remoteVideoRef.current.paused) {
-                          remoteVideoRef.current.play()
-                            .then(() => {
-                              console.log('✅ Video started after click')
-                              setShowPlayButton(false)
-                            })
-                            .catch(e => console.error('Click play failed:', e))
-                        }
-                      }}
+                    <div
+                        className="mb-4 bg-black rounded-lg overflow-hidden relative cursor-pointer"
+                        style={{ aspectRatio: '16/9' }}
+                        onClick={() => {
+                            // Make entire video area clickable to start playback
+                            if (remoteVideoRef.current && remoteVideoRef.current.paused) {
+                                remoteVideoRef.current.play()
+                                    .then(() => {
+                                        console.log('✅ Video started after click')
+                                        setShowPlayButton(false)
+                                    })
+                                    .catch(e => console.error('Click play failed:', e))
+                            }
+                        }}
                     >
-                        {/* Remote Video - Always rendered, never removed */}
+                        {/* Remote Video - ALWAYS rendered, NEVER conditionally removed */}
                         <video
                             ref={remoteVideoRef}
                             autoPlay
@@ -392,30 +392,40 @@ export default function Home() {
                                 height: '100%',
                                 display: 'block',
                                 opacity: remoteVideoReady ? '1' : '0',
-                                visibility: remoteVideoReady ? 'visible' : 'hidden'
+                                visibility: remoteVideoReady ? 'visible' : 'hidden',
+                                position: 'absolute',
+                                top: 0,
+                                left: 0,
+                                zIndex: 1
+                            }}
+                            onLoadedMetadata={() => {
+                              console.log('🎥 Video metadata loaded in DOM')
+                            }}
+                            onCanPlay={() => {
+                              console.log('🎥 Video can play')
                             }}
                         />
-                        
+
                         {/* Play Button - Shown when autoplay is blocked */}
                         {showPlayButton && (
-                          <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-75 z-20">
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                if (remoteVideoRef.current) {
-                                  remoteVideoRef.current.play()
-                                    .then(() => {
-                                      console.log('✅ Video started from button')
-                                      setShowPlayButton(false)
-                                    })
-                                    .catch(err => console.error('Button play failed:', err))
-                                }
-                              }}
-                              className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold text-lg shadow-lg"
-                            >
-                              ▶️ Click to See Stranger
-                            </button>
-                          </div>
+                            <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-75 z-20">
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation()
+                                        if (remoteVideoRef.current) {
+                                            remoteVideoRef.current.play()
+                                                .then(() => {
+                                                    console.log('✅ Video started from button')
+                                                    setShowPlayButton(false)
+                                                })
+                                                .catch(err => console.error('Button play failed:', err))
+                                        }
+                                    }}
+                                    className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold text-lg shadow-lg"
+                                >
+                                    ▶️ Click to See Stranger
+                                </button>
+                            </div>
                         )}
 
                         {/* Placeholder */}
