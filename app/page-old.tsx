@@ -1,0 +1,1150 @@
+'use client'
+
+import { useState, useEffect, useRef } from 'react'
+import { io, Socket } from 'socket.io-client'
+import { v4 as uuidv4 } from 'uuid'
+import Peer, { MediaConnection } from 'peerjs'
+
+interface Message {
+    id: string
+    text: string
+    sender: 'me' | 'stranger'
+    timestamp: Date
+}
+
+export default function Home() {
+    const [socket, setSocket] = useState<Socket | null>(null)
+    const [isConnected, setIsConnected] = useState(false)
+    const [isSearching, setIsSearching] = useState(false)
+    const [isMatched, setIsMatched] = useState(false)
+    const [messages, setMessages] = useState<Message[]>([])
+    const [messageInput, setMessageInput] = useState('')
+    const [strangerId, setStrangerId] = useState<string | null>(null)
+    const [chatMode, setChatMode] = useState<'text' | 'video'>('text')
+
+    // Video chat state
+    const [isVideoEnabled, setIsVideoEnabled] = useState(false)
+    const [isAudioEnabled, setIsAudioEnabled] = useState(true)
+    const [remoteVideoEnabled, setRemoteVideoEnabled] = useState(false)
+
+  // Refs
+  const messagesEndRef = useRef<HTMLDivElement>(null)
+  const localVideoRef = useRef<HTMLVideoElement>(null)
+  const remoteVideoRef = useRef<HTMLVideoElement>(null)
+  const localStreamRef = useRef<MediaStream | null>(null)
+  const userId = useRef(uuidv4())
+  const peerRef = useRef<Peer | null>(null)
+  const callRef = useRef<MediaConnection | null>(null)
+
+    // Initialize WebRTC
+    const initializePeerConnection = () => {
+        const configuration = {
+            iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'stun:stun1.l.google.com:19302' },
+            ],
+        }
+
+        const pc = new RTCPeerConnection(configuration)
+
+        // Monitor connection state - CRITICAL for debugging
+        pc.onconnectionstatechange = () => {
+            console.log('🔌 Peer connection state changed:', pc.connectionState)
+            if (pc.connectionState === 'connected') {
+                console.log('✅✅✅ WebRTC CONNECTION FULLY ESTABLISHED! ✅✅✅')
+            } else if (pc.connectionState === 'disconnected') {
+                console.warn('⚠️ WebRTC connection disconnected')
+                setRemoteVideoEnabled(false)
+            } else if (pc.connectionState === 'failed') {
+                console.error('❌ WebRTC connection failed - may need TURN server')
+                setRemoteVideoEnabled(false)
+            } else if (pc.connectionState === 'closed') {
+                console.log('WebRTC connection closed')
+                setRemoteVideoEnabled(false)
+            }
+        }
+
+        pc.oniceconnectionstatechange = () => {
+            console.log('🧊 ICE connection state:', pc.iceConnectionState)
+            if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+                console.log('✅✅✅ ICE CONNECTION ESTABLISHED! ✅✅✅')
+            } else if (pc.iceConnectionState === 'failed') {
+                console.error('❌ ICE connection failed - firewall/NAT issue, may need TURN server')
+            } else if (pc.iceConnectionState === 'disconnected') {
+                console.warn('⚠️ ICE connection disconnected')
+            }
+        }
+
+        // Monitor ICE gathering state
+        pc.onicegatheringstatechange = () => {
+            console.log('🧊 ICE gathering state:', pc.iceGatheringState)
+        }
+
+        // Monitor signaling state
+        pc.onsignalingstatechange = () => {
+            console.log('📡 Signaling state:', pc.signalingState)
+        }
+
+        // Handle remote stream - THIS IS WHERE THE OTHER PERSON'S VIDEO COMES IN
+        pc.ontrack = (event) => {
+            console.log('🎥 ========== REMOTE TRACK RECEIVED ==========')
+            console.log('Track kind:', event.track.kind)
+            console.log('Track enabled:', event.track.enabled)
+            console.log('Track readyState:', event.track.readyState)
+            console.log('Number of streams:', event.streams.length)
+
+            if (event.track.kind === 'video') {
+                console.log('✅✅✅ VIDEO TRACK RECEIVED FROM STRANGER! ✅✅✅')
+                setRemoteVideoEnabled(true)
+            }
+
+            // Ensure we're in video mode
+            if (chatMode !== 'video') {
+                console.log('Auto-switching to video mode for remote track...')
+                setChatMode('video')
+            }
+
+            if (remoteVideoRef.current && event.streams[0]) {
+                const remoteStream = event.streams[0]
+                console.log('Setting remote video srcObject to stream:', remoteStream.id)
+                remoteVideoRef.current.srcObject = remoteStream
+
+                // Set attributes for iOS
+                remoteVideoRef.current.setAttribute('playsinline', 'true')
+                remoteVideoRef.current.setAttribute('webkit-playsinline', 'true')
+                remoteVideoRef.current.setAttribute('x5-playsinline', 'true')
+
+                // Monitor remote video tracks state - THIS IS CRITICAL
+                remoteStream.getVideoTracks().forEach((track) => {
+                    console.log('🎥 Remote video track details:')
+                    console.log('  - Label:', track.label)
+                    console.log('  - Enabled:', track.enabled)
+                    console.log('  - ReadyState:', track.readyState)
+                    console.log('  - Muted:', track.muted)
+
+                    track.onended = () => {
+                        console.warn('❌ Remote video track ended')
+                        setRemoteVideoEnabled(false)
+                    }
+
+                    track.onmute = () => {
+                        console.warn('⚠️ Remote video track muted')
+                    }
+
+                    track.onunmute = () => {
+                        console.log('✅ Remote video track unmuted')
+                        setRemoteVideoEnabled(true)
+                    }
+
+                    // Force enable the track
+                    if (!track.enabled) {
+                        track.enabled = true
+                        console.log('✅ Force enabled remote video track')
+                    }
+                })
+
+                // Force play with retry - THIS MAKES THE VIDEO VISIBLE
+                const playRemoteVideo = async (attempt = 1) => {
+                    try {
+                        if (!remoteVideoRef.current) {
+                            console.error('remoteVideoRef is null, cannot play')
+                            return
+                        }
+
+                        console.log(`Attempting to play remote video (attempt ${attempt})...`)
+                        await remoteVideoRef.current.play()
+                        console.log('✅ Remote video playing successfully!')
+                        setRemoteVideoEnabled(true)
+
+                        // Ensure video is visible
+                        if (remoteVideoRef.current) {
+                            remoteVideoRef.current.style.display = 'block'
+                            remoteVideoRef.current.style.opacity = '1'
+                            remoteVideoRef.current.style.visibility = 'visible'
+                            console.log('✅ Remote video element is now visible and playing')
+                            console.log('Video width:', remoteVideoRef.current.videoWidth)
+                            console.log('Video height:', remoteVideoRef.current.videoHeight)
+                        }
+                    } catch (error) {
+                        console.error(`❌ Error playing remote video (attempt ${attempt}):`, error)
+                        if (attempt < 5) {
+                            setTimeout(() => playRemoteVideo(attempt + 1), 300 * attempt)
+                        } else {
+                            console.error('❌ Failed to play remote video after 5 attempts')
+                            // Try one more time after a longer delay
+                            setTimeout(() => {
+                                if (remoteVideoRef.current && remoteVideoRef.current.srcObject) {
+                                    remoteVideoRef.current.play().catch(e => console.error('Final play attempt failed:', e))
+                                }
+                            }, 2000)
+                        }
+                    }
+                }
+
+                playRemoteVideo()
+                console.log('✅ Remote video setup initiated')
+            } else {
+                console.warn('Remote video ref or stream not available')
+            }
+        }
+
+        // Handle ICE candidates
+        pc.onicecandidate = (event) => {
+            if (event.candidate && socket && strangerId) {
+                socket.emit('webrtc-ice-candidate', {
+                    candidate: event.candidate,
+                    strangerId,
+                    senderId: userId.current,
+                })
+            }
+        }
+
+        peerConnectionRef.current = pc
+        return pc
+    }
+
+    // Get user media (camera/microphone)
+    const startLocalStream = async () => {
+        try {
+            console.log('Requesting camera/microphone access...')
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: {
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 },
+                    facingMode: 'user'
+                },
+                audio: {
+                    echoCancellation: true,
+                    noiseSuppression: true
+                },
+            })
+
+            console.log('Got media stream:', stream.id)
+            console.log('Video tracks:', stream.getVideoTracks().length)
+            console.log('Audio tracks:', stream.getAudioTracks().length)
+
+            localStreamRef.current = stream
+
+            // Check if video tracks are enabled and force enable them
+            const videoTrack = stream.getVideoTracks()[0]
+            if (videoTrack) {
+                // Force enable video track
+                videoTrack.enabled = true
+                console.log('Video track enabled:', videoTrack.enabled)
+                console.log('Video track readyState:', videoTrack.readyState)
+                console.log('Video track label:', videoTrack.label)
+                setIsVideoEnabled(true)
+            }
+
+            const audioTrack = stream.getAudioTracks()[0]
+            if (audioTrack) {
+                // Force enable audio track
+                audioTrack.enabled = true
+                setIsAudioEnabled(true)
+            }
+
+            // Set video element source
+            if (localVideoRef.current) {
+                console.log('Setting local video srcObject...')
+                localVideoRef.current.srcObject = stream
+
+                // Set video element attributes for iOS
+                localVideoRef.current.setAttribute('playsinline', 'true')
+                localVideoRef.current.setAttribute('webkit-playsinline', 'true')
+                localVideoRef.current.setAttribute('x5-playsinline', 'true')
+
+                // Force play with multiple attempts
+                const playVideo = async (attempt = 1) => {
+                    try {
+                        await localVideoRef.current!.play()
+                        console.log('Local video playing successfully')
+
+                        // Double check video is actually playing
+                        if (localVideoRef.current) {
+                            localVideoRef.current.style.display = 'block'
+                            localVideoRef.current.style.opacity = '1'
+                            console.log('Video element display:', localVideoRef.current.style.display)
+                            console.log('Video element opacity:', localVideoRef.current.style.opacity)
+                            console.log('Video element srcObject:', !!localVideoRef.current.srcObject)
+                        }
+                    } catch (playError) {
+                        console.error(`Error playing local video (attempt ${attempt}):`, playError)
+                        if (attempt < 3) {
+                            // Try again after delay
+                            setTimeout(() => playVideo(attempt + 1), 200 * attempt)
+                        } else {
+                            console.error('Failed to play video after 3 attempts')
+                        }
+                    }
+                }
+
+                await playVideo()
+            } else {
+                console.warn('localVideoRef.current is null!')
+            }
+
+            // Add tracks to peer connection if it exists
+            if (peerConnectionRef.current) {
+                stream.getTracks().forEach((track) => {
+                    const existingSender = peerConnectionRef.current?.getSenders().find(
+                        (s) => s.track === track
+                    )
+                    if (!existingSender) {
+                        peerConnectionRef.current?.addTrack(track, stream)
+                        console.log('Added track to peer connection:', track.kind)
+                    }
+                })
+            }
+
+            console.log('Local stream setup complete')
+        } catch (error) {
+            console.error('Error accessing media devices:', error)
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+            alert('Could not access camera/microphone: ' + errorMessage + '\n\nPlease check your browser permissions.')
+            setIsVideoEnabled(false)
+            setIsAudioEnabled(false)
+        }
+    }
+
+    // Stop local stream
+    const stopLocalStream = () => {
+        if (localStreamRef.current) {
+            localStreamRef.current.getTracks().forEach((track) => track.stop())
+            localStreamRef.current = null
+        }
+
+        if (localVideoRef.current) {
+            localVideoRef.current.srcObject = null
+        }
+
+        setIsVideoEnabled(false)
+    }
+
+    // Toggle video
+    const toggleVideo = async () => {
+        if (localStreamRef.current) {
+            const videoTrack = localStreamRef.current.getVideoTracks()[0]
+            if (videoTrack) {
+                videoTrack.enabled = !videoTrack.enabled
+                setIsVideoEnabled(videoTrack.enabled)
+                console.log('Video track enabled:', videoTrack.enabled)
+
+                // Ensure video element is visible and playing
+                if (localVideoRef.current && videoTrack.enabled) {
+                    localVideoRef.current.style.display = 'block'
+                    localVideoRef.current.play().catch((error) => {
+                        console.error('Error playing video after toggle:', error)
+                    })
+                }
+            }
+        } else {
+            // If no stream, try to start it
+            await startLocalStream()
+        }
+    }
+
+    // Toggle audio
+    const toggleAudio = () => {
+        if (localStreamRef.current) {
+            const audioTrack = localStreamRef.current.getAudioTracks()[0]
+            if (audioTrack) {
+                audioTrack.enabled = !audioTrack.enabled
+                setIsAudioEnabled(audioTrack.enabled)
+            }
+        }
+    }
+
+    // Switch chat mode
+    const switchChatMode = async (mode: 'text' | 'video') => {
+        setChatMode(mode)
+
+        if (mode === 'video' && isMatched && strangerId) {
+            try {
+                console.log('Switching to video mode...')
+
+                // Start local stream FIRST - this is critical
+                if (!localStreamRef.current) {
+                    console.log('Starting local stream...')
+                    await startLocalStream()
+                } else {
+                    console.log('Local stream already exists')
+                    // Make sure video is playing
+                    if (localVideoRef.current && localVideoRef.current.srcObject) {
+                        localVideoRef.current.play().catch((error) => {
+                            console.error('Error playing existing video:', error)
+                        })
+                    }
+                }
+
+                // Initialize peer connection
+                if (!peerConnectionRef.current) {
+                    console.log('Initializing peer connection...')
+                    initializePeerConnection()
+                }
+
+                // Add tracks to peer connection
+                if (peerConnectionRef.current && localStreamRef.current) {
+                    console.log('Adding tracks to peer connection...')
+                    localStreamRef.current.getTracks().forEach((track) => {
+                        const existingSender = peerConnectionRef.current?.getSenders().find(
+                            (s) => s.track === track
+                        )
+                        if (!existingSender) {
+                            peerConnectionRef.current?.addTrack(track, localStreamRef.current!)
+                            console.log('Added track:', track.kind, track.enabled)
+                        }
+                    })
+                }
+
+                // ONLY ONE USER SHOULD CREATE OFFER - use userId comparison to decide
+                // The user with the "smaller" userId creates the offer, the other waits
+                const shouldCreateOffer = userId.current < strangerId
+                console.log('Should I create offer?', shouldCreateOffer, '(my ID:', userId.current, 'vs stranger:', strangerId, ')')
+
+                if (shouldCreateOffer && peerConnectionRef.current && socket && strangerId && localStreamRef.current) {
+                    console.log('✅ I will create the offer (my ID is smaller)')
+                    const offer = await peerConnectionRef.current.createOffer({
+                        offerToReceiveAudio: true,
+                        offerToReceiveVideo: true,
+                    })
+                    await peerConnectionRef.current.setLocalDescription(offer)
+
+                    socket.emit('webrtc-offer', {
+                        offer,
+                        strangerId,
+                        senderId: userId.current,
+                    })
+                    console.log('📤 WebRTC offer sent to stranger')
+                } else {
+                    console.log('⏳ I will wait to receive an offer (stranger will send it)')
+                }
+            } catch (error) {
+                console.error('Error switching to video mode:', error)
+                alert('Failed to start video: ' + (error instanceof Error ? error.message : 'Unknown error'))
+            }
+        } else if (mode === 'text' && localStreamRef.current) {
+            stopLocalStream()
+            if (peerConnectionRef.current) {
+                peerConnectionRef.current.close()
+                peerConnectionRef.current = null
+            }
+        }
+    }
+
+    useEffect(() => {
+        // Connect to Socket.io server
+        const newSocket = io(process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3001', {
+            transports: ['websocket'],
+        })
+
+        newSocket.on('connect', () => {
+            setIsConnected(true)
+            newSocket.emit('register', userId.current)
+        })
+
+        newSocket.on('disconnect', () => {
+            setIsConnected(false)
+            setIsMatched(false)
+            setIsSearching(false)
+            stopLocalStream()
+        })
+
+        newSocket.on('matched', async (data: { strangerId: string }) => {
+            console.log('✅ Match found! Stranger ID:', data.strangerId)
+            setIsSearching(false)
+            setIsMatched(true)
+            setStrangerId(data.strangerId)
+            setMessages([{
+                id: uuidv4(),
+                text: 'You are now connected! Say hello 👋',
+                sender: 'stranger',
+                timestamp: new Date(),
+            }])
+            console.log('Match state updated - isMatched: true, strangerId:', data.strangerId)
+
+            // Note: Video initialization handled separately when user switches to video mode
+        })
+
+        newSocket.on('disconnected', () => {
+            setIsMatched(false)
+            setStrangerId(null)
+            setRemoteVideoEnabled(false)
+            stopLocalStream()
+            if (peerConnectionRef.current) {
+                peerConnectionRef.current.close()
+                peerConnectionRef.current = null
+            }
+            setMessages([{
+                id: uuidv4(),
+                text: 'Stranger disconnected. Click "Find Stranger" to connect with someone new.',
+                sender: 'stranger',
+                timestamp: new Date(),
+            }])
+        })
+
+        newSocket.on('message', (data: { text: string; senderId: string }) => {
+            if (data.senderId !== userId.current) {
+                setMessages((prev) => [
+                    ...prev,
+                    {
+                        id: uuidv4(),
+                        text: data.text,
+                        sender: 'stranger',
+                        timestamp: new Date(),
+                    },
+                ])
+            }
+        })
+
+        // WebRTC signaling handlers
+        newSocket.on('webrtc-offer', async (data: { offer: RTCSessionDescriptionInit; senderId: string }) => {
+            try {
+                console.log('📨 Received WebRTC offer from:', data.senderId)
+                console.log('Offer type:', data.offer.type)
+
+                // Don't check isMatched/strangerId - they might not be set yet due to React state timing
+                // Just process the offer - if we received it, the server already validated we're matched
+                console.log('✅ Processing WebRTC offer from stranger!', data.senderId)
+                console.log('Current chat mode:', chatMode)
+
+                // Store offer if we need to wait for video mode
+                if (chatMode !== 'video') {
+                    console.log('Auto-switching to video mode and storing offer...')
+                    setChatMode('video')
+                    pendingOfferRef.current = { offer: data.offer, senderId: data.senderId }
+                    return // Will be processed by useEffect when video mode is active
+                }
+
+                // Process offer immediately if already in video mode
+                await processIncomingOffer(data.offer, data.senderId)
+            } catch (error) {
+                console.error('Error handling WebRTC offer:', error)
+            }
+        })
+
+        // Helper to process incoming offer (separated for reuse)
+        const processIncomingOffer = async (offer: RTCSessionDescriptionInit, senderId: string) => {
+            try {
+                // Wait for DOM to be ready (video element exists)
+                let retries = 0
+                while (!localVideoRef.current && retries < 10) {
+                    await new Promise(resolve => setTimeout(resolve, 100))
+                    retries++
+                }
+
+                if (!localVideoRef.current) {
+                    console.error('localVideoRef not ready after waiting')
+                }
+
+                // Initialize peer connection if needed
+                if (!peerConnectionRef.current) {
+                    console.log('Initializing peer connection for incoming offer...')
+                    initializePeerConnection()
+                    // Give it a moment to initialize
+                    await new Promise(resolve => setTimeout(resolve, 100))
+                }
+
+                // Start local stream if not already started
+                if (!localStreamRef.current) {
+                    console.log('Starting local stream for incoming offer...')
+                    await startLocalStream()
+                    // Wait for stream to be fully set up
+                    await new Promise(resolve => setTimeout(resolve, 200))
+                }
+
+                // Handle the offer (pass senderId)
+                if (peerConnectionRef.current && localStreamRef.current) {
+                    await handleIncomingOffer(offer, senderId)
+                } else {
+                    console.error('Peer connection or stream not ready:', {
+                        hasPeer: !!peerConnectionRef.current,
+                        hasStream: !!localStreamRef.current
+                    })
+                }
+            } catch (error) {
+                console.error('Error processing incoming offer:', error)
+            }
+        }
+
+        // Function to process pending ICE candidates
+        const processPendingIceCandidates = async () => {
+            if (peerConnectionRef.current && peerConnectionRef.current.remoteDescription) {
+                console.log('Processing', pendingIceCandidatesRef.current.length, 'pending ICE candidates')
+                const candidates = [...pendingIceCandidatesRef.current]
+                pendingIceCandidatesRef.current = [] // Clear array
+
+                for (const candidate of candidates) {
+                    try {
+                        await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(candidate))
+                        console.log('Added pending ICE candidate')
+                    } catch (error) {
+                        console.error('Error adding pending ICE candidate:', error)
+                    }
+                }
+            }
+        }
+
+        // Helper function to handle incoming offer (moved outside to be accessible)
+        const handleIncomingOffer = async (offer: RTCSessionDescriptionInit, senderId?: string) => {
+            if (!peerConnectionRef.current) {
+                console.error('Peer connection not ready')
+                return
+            }
+
+            // Ensure local stream exists
+            if (!localStreamRef.current) {
+                console.log('Local stream missing, starting it...')
+                await startLocalStream()
+            }
+
+            if (!localStreamRef.current) {
+                console.error('Failed to start local stream')
+                return
+            }
+
+            // Make sure all tracks are added and enabled
+            localStreamRef.current.getTracks().forEach((track) => {
+                // Ensure tracks are enabled
+                if (!track.enabled) {
+                    track.enabled = true
+                    console.log('Enabled track:', track.kind)
+                }
+
+                const existingSender = peerConnectionRef.current?.getSenders().find(
+                    (s) => s.track === track
+                )
+                if (!existingSender) {
+                    peerConnectionRef.current?.addTrack(track, localStreamRef.current!)
+                    console.log('Added track to peer connection:', track.kind, track.enabled)
+                }
+            })
+
+            try {
+                await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(offer))
+                console.log('✅ Set remote description successfully')
+
+                // Process any pending ICE candidates now that remote description is set
+                await processPendingIceCandidates()
+
+                const answer = await peerConnectionRef.current.createAnswer({
+                    offerToReceiveAudio: true,
+                    offerToReceiveVideo: true,
+                })
+                await peerConnectionRef.current.setLocalDescription(answer)
+                console.log('✅ Created and set local answer')
+
+                const currentSocket = socketRef.current || newSocket
+                // Use the senderId from the offer if we don't have strangerId yet
+                const targetStrangerId = strangerId || senderId || pendingOfferRef.current?.senderId
+
+                if (targetStrangerId && currentSocket) {
+                    currentSocket.emit('webrtc-answer', {
+                        answer,
+                        strangerId: targetStrangerId,
+                        senderId: userId.current,
+                    })
+                    console.log('✅✅✅ Sent WebRTC answer to stranger:', targetStrangerId)
+                } else {
+                    console.error('❌ Cannot send answer - missing target:', {
+                        strangerId,
+                        senderId: senderId,
+                        pendingSenderId: pendingOfferRef.current?.senderId,
+                        hasSocket: !!currentSocket
+                    })
+                }
+            } catch (error) {
+                console.error('Error in handleIncomingOffer:', error)
+            }
+        }
+
+        newSocket.on('webrtc-answer', async (data: { answer: RTCSessionDescriptionInit; senderId: string }) => {
+            console.log('Received WebRTC answer from stranger')
+            if (peerConnectionRef.current) {
+                try {
+                    await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(data.answer))
+                    console.log('Set remote description from answer successfully')
+
+                    // Process any pending ICE candidates now that remote description is set
+                    await processPendingIceCandidates()
+
+                    // Check connection state
+                    console.log('Peer connection state:', peerConnectionRef.current.connectionState)
+                    console.log('ICE connection state:', peerConnectionRef.current.iceConnectionState)
+                } catch (error) {
+                    console.error('Error setting remote description from answer:', error)
+                }
+            } else {
+                console.warn('Peer connection not ready when answer received')
+            }
+        })
+
+        newSocket.on('webrtc-ice-candidate', async (data: { candidate: RTCIceCandidateInit; senderId: string }) => {
+            console.log('Received ICE candidate from stranger')
+            if (peerConnectionRef.current && data.candidate) {
+                try {
+                    // Only add ICE candidate if remote description is set
+                    if (peerConnectionRef.current.remoteDescription) {
+                        await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(data.candidate))
+                        console.log('Added ICE candidate successfully')
+                        console.log('ICE connection state:', peerConnectionRef.current.iceConnectionState)
+                    } else {
+                        // Store candidate to add later
+                        console.log('Storing ICE candidate (remote description not set yet)')
+                        pendingIceCandidatesRef.current.push(data.candidate)
+                    }
+                } catch (error) {
+                    console.error('Error adding ICE candidate:', error)
+                }
+            }
+        })
+
+        socketRef.current = newSocket
+        setSocket(newSocket)
+
+        return () => {
+            stopLocalStream()
+            if (peerConnectionRef.current) {
+                peerConnectionRef.current.close()
+            }
+            newSocket.close()
+        }
+    }, [])
+
+    useEffect(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }, [messages])
+
+    // Process pending offer when video mode is active
+    useEffect(() => {
+        if (chatMode === 'video' && pendingOfferRef.current && isMatched && strangerId) {
+            const pending = pendingOfferRef.current
+            pendingOfferRef.current = null
+
+            console.log('🔄 Processing pending offer now that video mode is active...')
+
+            // Wait a bit for DOM to be ready, then process
+            const processOffer = async () => {
+                // Wait for video element to exist
+                let retries = 0
+                while (!localVideoRef.current && retries < 15) {
+                    await new Promise(resolve => setTimeout(resolve, 100))
+                    retries++
+                }
+
+                if (!peerConnectionRef.current) {
+                    console.log('Initializing peer connection for pending offer...')
+                    initializePeerConnection()
+                    await new Promise(resolve => setTimeout(resolve, 100))
+                }
+
+                if (!localStreamRef.current) {
+                    console.log('Starting local stream for pending offer...')
+                    await startLocalStream()
+                    await new Promise(resolve => setTimeout(resolve, 200))
+                }
+
+                if (peerConnectionRef.current && localStreamRef.current) {
+                    // Process the offer by creating answer
+                    try {
+                        await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(pending.offer))
+                        console.log('✅ Set remote description from pending offer')
+
+                        // Process pending ICE candidates
+                        if (peerConnectionRef.current.remoteDescription) {
+                            const candidates = [...pendingIceCandidatesRef.current]
+                            pendingIceCandidatesRef.current = []
+                            for (const candidate of candidates) {
+                                try {
+                                    await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(candidate))
+                                    console.log('Added pending ICE candidate')
+                                } catch (error) {
+                                    console.error('Error adding pending ICE candidate:', error)
+                                }
+                            }
+                        }
+
+                        const answer = await peerConnectionRef.current.createAnswer({
+                            offerToReceiveAudio: true,
+                            offerToReceiveVideo: true,
+                        })
+                        await peerConnectionRef.current.setLocalDescription(answer)
+                        console.log('✅ Created and set local answer from pending offer')
+
+                        if (strangerId && socketRef.current) {
+                            socketRef.current.emit('webrtc-answer', {
+                                answer,
+                                strangerId,
+                                senderId: userId.current,
+                            })
+                            console.log('✅ Sent WebRTC answer to stranger:', strangerId)
+                        }
+                    } catch (error) {
+                        console.error('Error processing pending offer:', error)
+                    }
+                }
+            }
+
+            processOffer().catch(error => {
+                console.error('Error in processOffer:', error)
+            })
+        }
+    }, [chatMode, isMatched, strangerId])
+
+    const findStranger = () => {
+        if (socket && isConnected) {
+            setIsSearching(true)
+            setIsMatched(false)
+            setMessages([])
+            setStrangerId(null)
+            setRemoteVideoEnabled(false)
+            stopLocalStream()
+            if (peerConnectionRef.current) {
+                peerConnectionRef.current.close()
+                peerConnectionRef.current = null
+            }
+            socket.emit('find-stranger', userId.current)
+        }
+    }
+
+    const disconnect = () => {
+        if (socket && isMatched) {
+            socket.emit('disconnect-stranger', { strangerId })
+            setIsMatched(false)
+            setIsSearching(false)
+            setStrangerId(null)
+            setMessages([])
+            setRemoteVideoEnabled(false)
+            stopLocalStream()
+            if (peerConnectionRef.current) {
+                peerConnectionRef.current.close()
+                peerConnectionRef.current = null
+            }
+        }
+    }
+
+    const sendMessage = () => {
+        if (socket && messageInput.trim() && isMatched && strangerId) {
+            const message: Message = {
+                id: uuidv4(),
+                text: messageInput,
+                sender: 'me',
+                timestamp: new Date(),
+            }
+
+            setMessages((prev) => [...prev, message])
+            socket.emit('send-message', {
+                text: messageInput,
+                strangerId,
+                senderId: userId.current,
+            })
+            setMessageInput('')
+        }
+    }
+
+    const handleKeyPress = (e: React.KeyboardEvent) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault()
+            sendMessage()
+        }
+    }
+
+    return (
+        <main className="min-h-screen bg-gradient-to-br from-primary-50 to-primary-100 dark:from-gray-900 dark:to-gray-800">
+            <div className="container mx-auto px-4 py-8 max-w-6xl">
+                {/* Header */}
+                <div className="text-center mb-8">
+                    <h1 className="text-4xl font-bold text-primary-700 dark:text-primary-300 mb-2">
+                        Strangers Connect
+                    </h1>
+                    <p className="text-gray-600 dark:text-gray-300">
+                        Connect with strangers from around the world • Free & Open Source
+                    </p>
+                    <div className="mt-4 flex items-center justify-center gap-2">
+                        <div className={`w-3 h-3 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                        <span className="text-sm text-gray-600 dark:text-gray-400">
+                            {isConnected ? 'Connected' : 'Disconnected'}
+                        </span>
+                    </div>
+                </div>
+
+                {/* Chat Mode Toggle */}
+                {isMatched && (
+                    <div className="mb-4 flex justify-center gap-4">
+                        <button
+                            onClick={() => switchChatMode('text')}
+                            className={`px-4 py-2 rounded-lg font-semibold transition ${chatMode === 'text'
+                                ? 'bg-primary-600 text-white'
+                                : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
+                                }`}
+                        >
+                            💬 Text Chat
+                        </button>
+                        <button
+                            onClick={() => switchChatMode('video')}
+                            className={`px-4 py-2 rounded-lg font-semibold transition ${chatMode === 'video'
+                                ? 'bg-primary-600 text-white'
+                                : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
+                                }`}
+                        >
+                            📹 Video Chat
+                        </button>
+                    </div>
+                )}
+
+                {/* Video Chat Container */}
+                {chatMode === 'video' && isMatched && (
+                    <div className="mb-4 bg-black rounded-lg overflow-hidden relative" style={{ aspectRatio: '16/9' }}>
+                        {/* Remote Video - THIS IS WHAT SHOWS THE OTHER PERSON'S VIDEO */}
+                        <video
+                            ref={remoteVideoRef}
+                            autoPlay
+                            playsInline
+                            webkit-playsinline="true"
+                            x5-playsinline="true"
+                            muted={false}
+                            className="w-full h-full object-cover bg-black"
+                            style={{
+                                display: remoteVideoEnabled ? 'block' : 'none',
+                                width: '100%',
+                                height: '100%',
+                                position: 'absolute',
+                                top: 0,
+                                left: 0,
+                                zIndex: 1,
+                                visibility: remoteVideoEnabled ? 'visible' : 'hidden',
+                            }}
+                            onLoadedMetadata={() => {
+                                console.log('✅ Remote video metadata loaded')
+                                console.log('Video dimensions:', remoteVideoRef.current?.videoWidth, 'x', remoteVideoRef.current?.videoHeight)
+                                setRemoteVideoEnabled(true)
+                                // Force play if paused
+                                if (remoteVideoRef.current && remoteVideoRef.current.paused) {
+                                    remoteVideoRef.current.play().catch(e => console.error('Error playing on metadata:', e))
+                                }
+                            }}
+                            onCanPlay={() => {
+                                console.log('✅ Remote video can play')
+                                setRemoteVideoEnabled(true)
+                                // Force play if paused
+                                if (remoteVideoRef.current && remoteVideoRef.current.paused) {
+                                    remoteVideoRef.current.play().catch(e => console.error('Error playing on canplay:', e))
+                                }
+                            }}
+                            onPlay={() => {
+                                console.log('✅✅✅ REMOTE VIDEO IS NOW PLAYING! ✅✅✅')
+                                setRemoteVideoEnabled(true)
+                            }}
+                            onPause={() => {
+                                console.warn('⚠️ Remote video paused')
+                            }}
+                            onError={(e) => {
+                                console.error('❌ Remote video error:', e)
+                                setRemoteVideoEnabled(false)
+                            }}
+                            onStalled={() => {
+                                console.warn('⚠️ Remote video stalled')
+                            }}
+                        />
+
+                        {/* Placeholder when no remote video */}
+                        {!remoteVideoEnabled && (
+                            <div className="absolute inset-0 flex items-center justify-center bg-gray-900 text-white z-0">
+                                <div className="text-center">
+                                    <div className="text-6xl mb-4">👤</div>
+                                    <p>Waiting for stranger to enable video...</p>
+                                    {peerConnectionRef.current && (
+                                        <p className="text-xs mt-2 text-gray-400">
+                                            Connection: {peerConnectionRef.current.connectionState}
+                                        </p>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Local Video (Picture-in-Picture) - Always show when in video mode */}
+                        {chatMode === 'video' && (
+                            <div className="absolute bottom-4 right-4 w-48 h-36 rounded-lg overflow-hidden border-2 border-white shadow-lg bg-black z-20">
+                                <video
+                                    ref={localVideoRef}
+                                    autoPlay
+                                    playsInline
+                                    muted
+                                    className="w-full h-full object-cover"
+                                    style={{
+                                        backgroundColor: 'black',
+                                        display: localStreamRef.current ? 'block' : 'none',
+                                        transform: 'scaleX(-1)', // Mirror effect like front camera
+                                    }}
+                                />
+                                {!localStreamRef.current && (
+                                    <div className="absolute inset-0 flex items-center justify-center text-white text-xs bg-black">
+                                        Camera starting...
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* Video Controls */}
+                        <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex gap-2 z-10">
+                            <button
+                                onClick={toggleVideo}
+                                className={`p-3 rounded-full ${isVideoEnabled ? 'bg-gray-700' : 'bg-red-600'} text-white hover:opacity-80 transition`}
+                                title={isVideoEnabled ? 'Turn off camera' : 'Turn on camera'}
+                            >
+                                {isVideoEnabled ? '📹' : '📷'}
+                            </button>
+                            <button
+                                onClick={toggleAudio}
+                                className={`p-3 rounded-full ${isAudioEnabled ? 'bg-gray-700' : 'bg-red-600'} text-white hover:opacity-80 transition`}
+                                title={isAudioEnabled ? 'Mute microphone' : 'Unmute microphone'}
+                            >
+                                {isAudioEnabled ? '🎤' : '🔇'}
+                            </button>
+                        </div>
+
+                        {/* Debug Info */}
+                        {process.env.NODE_ENV === 'development' && (
+                            <div className="absolute top-4 left-4 bg-black bg-opacity-50 text-white text-xs p-2 rounded z-10">
+                                <div>Local: {isVideoEnabled ? '✅' : '❌'}</div>
+                                <div>Remote: {remoteVideoEnabled ? '✅' : '❌'}</div>
+                                <div>Stream: {localStreamRef.current ? '✅' : '❌'}</div>
+                                <div>Peer: {peerConnectionRef.current ? '✅' : '❌'}</div>
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {/* Chat Container */}
+                <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl overflow-hidden">
+                    {/* Chat Header */}
+                    <div className="bg-primary-600 dark:bg-primary-700 px-6 py-4 flex justify-between items-center">
+                        <div>
+                            <h2 className="text-white font-semibold text-lg">
+                                {isMatched ? 'Chat Active' : isSearching ? 'Searching for stranger...' : 'Not Connected'}
+                            </h2>
+                            <p className="text-primary-100 text-sm">
+                                {isMatched ? 'You are connected!' : isSearching ? 'Please wait...' : 'Click "Find Stranger" to start'}
+                            </p>
+                        </div>
+                        <div className="flex gap-2">
+                            {!isMatched && !isSearching && (
+                                <button
+                                    onClick={findStranger}
+                                    disabled={!isConnected}
+                                    className="px-4 py-2 bg-white text-primary-600 rounded-lg font-semibold hover:bg-primary-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    Find Stranger
+                                </button>
+                            )}
+                            {isSearching && (
+                                <button
+                                    onClick={() => {
+                                        socket?.emit('cancel-search')
+                                        setIsSearching(false)
+                                    }}
+                                    className="px-4 py-2 bg-red-500 text-white rounded-lg font-semibold hover:bg-red-600 transition"
+                                >
+                                    Cancel
+                                </button>
+                            )}
+                            {isMatched && (
+                                <button
+                                    onClick={disconnect}
+                                    className="px-4 py-2 bg-red-500 text-white rounded-lg font-semibold hover:bg-red-600 transition"
+                                >
+                                    Disconnect
+                                </button>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Messages Area */}
+                    {chatMode === 'text' && (
+                        <div className="h-96 overflow-y-auto p-6 bg-gray-50 dark:bg-gray-900">
+                            {messages.length === 0 && !isSearching && (
+                                <div className="flex items-center justify-center h-full text-gray-500 dark:text-gray-400">
+                                    <p className="text-center">
+                                        {isMatched ? 'Start the conversation!' : 'No messages yet. Find a stranger to begin chatting.'}
+                                    </p>
+                                </div>
+                            )}
+
+                            {isSearching && (
+                                <div className="flex items-center justify-center h-full">
+                                    <div className="text-center">
+                                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto mb-4"></div>
+                                        <p className="text-gray-600 dark:text-gray-400">Searching for a stranger...</p>
+                                    </div>
+                                </div>
+                            )}
+
+                            <div className="space-y-4">
+                                {messages.map((message) => (
+                                    <div
+                                        key={message.id}
+                                        className={`flex ${message.sender === 'me' ? 'justify-end' : 'justify-start'}`}
+                                    >
+                                        <div
+                                            className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${message.sender === 'me'
+                                                ? 'bg-primary-600 text-white'
+                                                : 'bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200'
+                                                }`}
+                                        >
+                                            <p className="text-sm">{message.text}</p>
+                                            <p
+                                                className={`text-xs mt-1 ${message.sender === 'me' ? 'text-primary-100' : 'text-gray-500 dark:text-gray-400'
+                                                    }`}
+                                            >
+                                                {message.timestamp.toLocaleTimeString()}
+                                            </p>
+                                        </div>
+                                    </div>
+                                ))}
+                                <div ref={messagesEndRef} />
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Message Input */}
+                    {chatMode === 'text' && (
+                        <div className="border-t border-gray-200 dark:border-gray-700 p-4">
+                            <div className="flex gap-2">
+                                <input
+                                    type="text"
+                                    value={messageInput}
+                                    onChange={(e) => setMessageInput(e.target.value)}
+                                    onKeyPress={handleKeyPress}
+                                    placeholder={isMatched ? "Type a message..." : "Connect with a stranger first"}
+                                    disabled={!isMatched}
+                                    className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 dark:bg-gray-700 dark:text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                                />
+                                <button
+                                    onClick={sendMessage}
+                                    disabled={!isMatched || !messageInput.trim()}
+                                    className="px-6 py-2 bg-primary-600 text-white rounded-lg font-semibold hover:bg-primary-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    Send
+                                </button>
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                {/* Footer */}
+                <div className="mt-8 text-center text-gray-600 dark:text-gray-400 text-sm">
+                    <p>
+                        Made with ❤️ for connecting people •{' '}
+                        <a
+                            href="https://github.com/vamsikrishnakosuri/StrangersConnect"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-primary-600 dark:text-primary-400 hover:underline"
+                        >
+                            Open Source on GitHub
+                        </a>
+                    </p>
+                </div>
+            </div>
+        </main>
+    )
+}
