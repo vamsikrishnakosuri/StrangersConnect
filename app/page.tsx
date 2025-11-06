@@ -24,6 +24,19 @@ export default function Home() {
 
     // Video swap state - true means local is main, false means remote is main
     const [isLocalMain, setIsLocalMain] = useState(false)
+    
+    // Zoom state for videos
+    const [remoteVideoZoom, setRemoteVideoZoom] = useState(1)
+    const [remoteVideoPosition, setRemoteVideoPosition] = useState({ x: 0, y: 0 })
+    const [remoteVideoDragging, setRemoteVideoDragging] = useState(false)
+    const [remoteVideoDragStart, setRemoteVideoDragStart] = useState({ x: 0, y: 0 })
+    const [remoteVideoLastTouch, setRemoteVideoLastTouch] = useState<{ distance: number; center: { x: number; y: number } } | null>(null)
+    
+    const [localVideoZoom, setLocalVideoZoom] = useState(1)
+    const [localVideoPosition, setLocalVideoPosition] = useState({ x: 0, y: 0 })
+    const [localVideoDragging, setLocalVideoDragging] = useState(false)
+    const [localVideoDragStart, setLocalVideoDragStart] = useState({ x: 0, y: 0 })
+    const [localVideoLastTouch, setLocalVideoLastTouch] = useState<{ distance: number; center: { x: number; y: number } } | null>(null)
 
     const userId = useRef(uuidv4())
     const localVideoRef = useRef<HTMLVideoElement>(null)
@@ -1000,7 +1013,7 @@ export default function Home() {
                     {/* CRITICAL: Key prop prevents React reusing, always rendered */}
                     {/* Swaps between main view and PIP based on isLocalMain */}
                     <div
-                        className="absolute bg-black rounded-lg overflow-hidden border-2 border-white shadow-lg transition-all duration-300 ease-in-out cursor-pointer"
+                        className="absolute bg-black rounded-lg overflow-hidden border-2 border-white shadow-lg transition-all duration-300 ease-in-out cursor-grab"
                         style={{
                             opacity: isMatched ? '1' : '0.01',
                             display: isMatched ? 'block' : 'none',
@@ -1013,51 +1026,158 @@ export default function Home() {
                             right: isLocalMain ? '16px' : '0',
                             bottom: isLocalMain ? '16px' : '0',
                             zIndex: isLocalMain ? 20 : 15,
-                            pointerEvents: 'auto'
+                            pointerEvents: 'auto',
+                            cursor: remoteVideoDragging ? 'grabbing' : 'grab'
                         }}
-                        onClick={() => {
-                            // Clicking remote video makes it main (if it's currently PIP)
-                            if (isLocalMain) {
-                                setIsLocalMain(false)
+                        onClick={(e) => {
+                            // Only swap if not dragging or zooming
+                            if (!remoteVideoDragging && remoteVideoZoom === 1 && !remoteVideoLastTouch) {
+                                if (isLocalMain) {
+                                    setIsLocalMain(false)
+                                }
+                            }
+                        }}
+                        onWheel={(e) => {
+                            // Scroll to zoom (like WhatsApp slide)
+                            if (!isLocalMain) {
+                                e.preventDefault()
+                                const delta = e.deltaY > 0 ? -0.1 : 0.1
+                                setRemoteVideoZoom(prev => {
+                                    const newZoom = Math.max(1, Math.min(3, prev + delta))
+                                    // Reset position if zooming back to 1
+                                    if (newZoom === 1) {
+                                        setRemoteVideoPosition({ x: 0, y: 0 })
+                                    }
+                                    return newZoom
+                                })
+                            }
+                        }}
+                        onMouseDown={(e) => {
+                            if (remoteVideoZoom > 1 && !isLocalMain) {
+                                setRemoteVideoDragging(true)
+                                setRemoteVideoDragStart({
+                                    x: e.clientX - remoteVideoPosition.x,
+                                    y: e.clientY - remoteVideoPosition.y
+                                })
+                            }
+                        }}
+                        onMouseMove={(e) => {
+                            if (remoteVideoDragging && remoteVideoZoom > 1) {
+                                setRemoteVideoPosition({
+                                    x: e.clientX - remoteVideoDragStart.x,
+                                    y: e.clientY - remoteVideoDragStart.y
+                                })
+                            }
+                        }}
+                        onMouseUp={() => setRemoteVideoDragging(false)}
+                        onMouseLeave={() => setRemoteVideoDragging(false)}
+                        onTouchStart={(e) => {
+                            if (e.touches.length === 1) {
+                                // Single touch - start dragging if zoomed
+                                if (remoteVideoZoom > 1 && !isLocalMain) {
+                                    setRemoteVideoDragging(true)
+                                    setRemoteVideoDragStart({
+                                        x: e.touches[0].clientX - remoteVideoPosition.x,
+                                        y: e.touches[0].clientY - remoteVideoPosition.y
+                                    })
+                                }
+                            } else if (e.touches.length === 2) {
+                                // Pinch gesture - calculate initial distance
+                                const touch1 = e.touches[0]
+                                const touch2 = e.touches[1]
+                                const distance = Math.hypot(
+                                    touch2.clientX - touch1.clientX,
+                                    touch2.clientY - touch1.clientY
+                                )
+                                const center = {
+                                    x: (touch1.clientX + touch2.clientX) / 2,
+                                    y: (touch1.clientY + touch2.clientY) / 2
+                                }
+                                setRemoteVideoLastTouch({ distance, center })
+                            }
+                        }}
+                        onTouchMove={(e) => {
+                            if (e.touches.length === 1 && remoteVideoDragging && remoteVideoZoom > 1) {
+                                // Single touch dragging
+                                setRemoteVideoPosition({
+                                    x: e.touches[0].clientX - remoteVideoDragStart.x,
+                                    y: e.touches[0].clientY - remoteVideoDragStart.y
+                                })
+                            } else if (e.touches.length === 2 && remoteVideoLastTouch) {
+                                // Pinch to zoom
+                                e.preventDefault()
+                                const touch1 = e.touches[0]
+                                const touch2 = e.touches[1]
+                                const distance = Math.hypot(
+                                    touch2.clientX - touch1.clientX,
+                                    touch2.clientY - touch1.clientY
+                                )
+                                const scale = distance / remoteVideoLastTouch.distance
+                                setRemoteVideoZoom(prev => {
+                                    const newZoom = Math.max(1, Math.min(3, prev * scale))
+                                    if (newZoom === 1) {
+                                        setRemoteVideoPosition({ x: 0, y: 0 })
+                                    }
+                                    return newZoom
+                                })
+                                setRemoteVideoLastTouch({ distance, center: remoteVideoLastTouch.center })
+                            }
+                        }}
+                        onTouchEnd={(e) => {
+                            if (e.touches.length < 2) {
+                                setRemoteVideoLastTouch(null)
+                            }
+                            if (e.touches.length === 0) {
+                                setRemoteVideoDragging(false)
                             }
                         }}
                     >
-                        <video
-                            key="remote-video"
-                            ref={remoteVideoRef}
-                            autoPlay
-                            playsInline
-                            muted={false}
-                            className="w-full h-full object-cover bg-black"
+                        <div
                             style={{
                                 width: '100%',
                                 height: '100%',
-                                display: 'block',
-                                pointerEvents: 'none', // Don't interfere with click
-                                visibility: 'visible',
-                                objectFit: 'cover',
-                                objectPosition: 'center'
-                        }}
-                        onLoadedMetadata={() => {
-                            console.log('🎥 Video metadata loaded in DOM')
-                            console.log('📊 Video element state:', {
-                                srcObject: !!remoteVideoRef.current?.srcObject,
-                                readyState: remoteVideoRef.current?.readyState,
-                                videoWidth: remoteVideoRef.current?.videoWidth,
-                                videoHeight: remoteVideoRef.current?.videoHeight,
-                                paused: remoteVideoRef.current?.paused
-                            })
-                            setRemoteVideoReady(true)
-                        }}
-                        onCanPlay={() => {
-                            console.log('🎥 Video can play in DOM')
-                            setRemoteVideoReady(true)
-                        }}
+                                transform: `scale(${remoteVideoZoom}) translate(${remoteVideoPosition.x / remoteVideoZoom}px, ${remoteVideoPosition.y / remoteVideoZoom}px)`,
+                                transition: remoteVideoDragging || remoteVideoLastTouch ? 'none' : 'transform 0.2s ease-out',
+                                transformOrigin: 'center center'
+                            }}
+                        >
+                            <video
+                                key="remote-video"
+                                ref={remoteVideoRef}
+                                autoPlay
+                                playsInline
+                                muted={false}
+                                className="w-full h-full object-cover bg-black"
+                                style={{
+                                    width: '100%',
+                                    height: '100%',
+                                    display: 'block',
+                                    pointerEvents: 'none',
+                                    visibility: 'visible',
+                                    objectFit: 'cover',
+                                    objectPosition: 'center'
+                                }}
+                            onLoadedMetadata={() => {
+                                console.log('🎥 Video metadata loaded in DOM')
+                                console.log('📊 Video element state:', {
+                                    srcObject: !!remoteVideoRef.current?.srcObject,
+                                    readyState: remoteVideoRef.current?.readyState,
+                                    videoWidth: remoteVideoRef.current?.videoWidth,
+                                    videoHeight: remoteVideoRef.current?.videoHeight,
+                                    paused: remoteVideoRef.current?.paused
+                                })
+                                setRemoteVideoReady(true)
+                            }}
+                            onCanPlay={() => {
+                                console.log('🎥 Video can play in DOM')
+                                setRemoteVideoReady(true)
+                            }}
                         onError={(e) => {
                             console.error('❌ Video element error:', e)
                             console.error('Video element:', remoteVideoRef.current)
                         }}
-                    />
+                            />
+                        </div>
                     </div>
 
                     {/* Play Button - Shown when autoplay is blocked */}
@@ -1098,7 +1218,7 @@ export default function Home() {
                     {/* Local Video - Swaps between main view and PIP based on isLocalMain */}
                     {isMatched && (
                         <div
-                            className="absolute bg-black rounded-lg overflow-hidden border-2 border-white shadow-lg transition-all duration-300 ease-in-out cursor-pointer"
+                            className="absolute bg-black rounded-lg overflow-hidden border-2 border-white shadow-lg transition-all duration-300 ease-in-out cursor-grab"
                             style={{
                                 // If isLocalMain is true, local is main (full screen)
                                 // If isLocalMain is false, local is PIP (small, bottom-right)
@@ -1109,29 +1229,136 @@ export default function Home() {
                                 right: isLocalMain ? '0' : '16px',
                                 bottom: isLocalMain ? '0' : '16px',
                                 zIndex: isLocalMain ? 15 : 20,
-                                pointerEvents: 'auto'
+                                pointerEvents: 'auto',
+                                cursor: localVideoDragging ? 'grabbing' : 'grab'
                             }}
-                            onClick={() => {
-                                // Clicking local video makes it main (if it's currently PIP)
-                                if (!isLocalMain) {
-                                    setIsLocalMain(true)
+                            onClick={(e) => {
+                                // Only swap if not dragging or zooming
+                                if (!localVideoDragging && localVideoZoom === 1 && !localVideoLastTouch) {
+                                    if (!isLocalMain) {
+                                        setIsLocalMain(true)
+                                    }
+                                }
+                            }}
+                            onWheel={(e) => {
+                                // Scroll to zoom (like WhatsApp slide)
+                                if (isLocalMain) {
+                                    e.preventDefault()
+                                    const delta = e.deltaY > 0 ? -0.1 : 0.1
+                                    setLocalVideoZoom(prev => {
+                                        const newZoom = Math.max(1, Math.min(3, prev + delta))
+                                        // Reset position if zooming back to 1
+                                        if (newZoom === 1) {
+                                            setLocalVideoPosition({ x: 0, y: 0 })
+                                        }
+                                        return newZoom
+                                    })
+                                }
+                            }}
+                            onMouseDown={(e) => {
+                                if (localVideoZoom > 1 && isLocalMain) {
+                                    setLocalVideoDragging(true)
+                                    setLocalVideoDragStart({
+                                        x: e.clientX - localVideoPosition.x,
+                                        y: e.clientY - localVideoPosition.y
+                                    })
+                                }
+                            }}
+                            onMouseMove={(e) => {
+                                if (localVideoDragging && localVideoZoom > 1) {
+                                    setLocalVideoPosition({
+                                        x: e.clientX - localVideoDragStart.x,
+                                        y: e.clientY - localVideoDragStart.y
+                                    })
+                                }
+                            }}
+                            onMouseUp={() => setLocalVideoDragging(false)}
+                            onMouseLeave={() => setLocalVideoDragging(false)}
+                            onTouchStart={(e) => {
+                                if (e.touches.length === 1) {
+                                    // Single touch - start dragging if zoomed
+                                    if (localVideoZoom > 1 && isLocalMain) {
+                                        setLocalVideoDragging(true)
+                                        setLocalVideoDragStart({
+                                            x: e.touches[0].clientX - localVideoPosition.x,
+                                            y: e.touches[0].clientY - localVideoPosition.y
+                                        })
+                                    }
+                                } else if (e.touches.length === 2) {
+                                    // Pinch gesture - calculate initial distance
+                                    const touch1 = e.touches[0]
+                                    const touch2 = e.touches[1]
+                                    const distance = Math.hypot(
+                                        touch2.clientX - touch1.clientX,
+                                        touch2.clientY - touch1.clientY
+                                    )
+                                    const center = {
+                                        x: (touch1.clientX + touch2.clientX) / 2,
+                                        y: (touch1.clientY + touch2.clientY) / 2
+                                    }
+                                    setLocalVideoLastTouch({ distance, center })
+                                }
+                            }}
+                            onTouchMove={(e) => {
+                                if (e.touches.length === 1 && localVideoDragging && localVideoZoom > 1) {
+                                    // Single touch dragging
+                                    setLocalVideoPosition({
+                                        x: e.touches[0].clientX - localVideoDragStart.x,
+                                        y: e.touches[0].clientY - localVideoDragStart.y
+                                    })
+                                } else if (e.touches.length === 2 && localVideoLastTouch) {
+                                    // Pinch to zoom
+                                    e.preventDefault()
+                                    const touch1 = e.touches[0]
+                                    const touch2 = e.touches[1]
+                                    const distance = Math.hypot(
+                                        touch2.clientX - touch1.clientX,
+                                        touch2.clientY - touch1.clientY
+                                    )
+                                    const scale = distance / localVideoLastTouch.distance
+                                    setLocalVideoZoom(prev => {
+                                        const newZoom = Math.max(1, Math.min(3, prev * scale))
+                                        if (newZoom === 1) {
+                                            setLocalVideoPosition({ x: 0, y: 0 })
+                                        }
+                                        return newZoom
+                                    })
+                                    setLocalVideoLastTouch({ distance, center: localVideoLastTouch.center })
+                                }
+                            }}
+                            onTouchEnd={(e) => {
+                                if (e.touches.length < 2) {
+                                    setLocalVideoLastTouch(null)
+                                }
+                                if (e.touches.length === 0) {
+                                    setLocalVideoDragging(false)
                                 }
                             }}
                         >
-                            <video
-                                ref={localVideoRef}
-                                autoPlay
-                                playsInline
-                                muted
-                                className="w-full h-full object-cover"
+                            <div
                                 style={{
-                                    transform: 'scaleX(-1)',
-                                    display: 'block',
-                                    pointerEvents: 'none', // Don't interfere with click
-                                    objectFit: 'cover',
-                                    objectPosition: 'center'
+                                    width: '100%',
+                                    height: '100%',
+                                    transform: `scale(${localVideoZoom}) translate(${localVideoPosition.x / localVideoZoom}px, ${localVideoPosition.y / localVideoZoom}px)`,
+                                    transition: localVideoDragging || localVideoLastTouch ? 'none' : 'transform 0.2s ease-out',
+                                    transformOrigin: 'center center'
                                 }}
-                            />
+                            >
+                                <video
+                                    ref={localVideoRef}
+                                    autoPlay
+                                    playsInline
+                                    muted
+                                    className="w-full h-full object-cover"
+                                    style={{
+                                        transform: 'scaleX(-1)',
+                                        display: 'block',
+                                        pointerEvents: 'none',
+                                        objectFit: 'cover',
+                                        objectPosition: 'center'
+                                    }}
+                                />
+                            </div>
                         </div>
                     )}
                 </div>
