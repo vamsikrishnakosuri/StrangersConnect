@@ -42,18 +42,9 @@ export default function Home() {
             ],
         })
 
-        // WebRTC Connection State Monitoring
-        pc.onicecandidate = (event) => {
-            if (event.candidate) {
-                console.log('🧊 ICE candidate:', {
-                    candidate: event.candidate.candidate.substring(0, 50) + '...',
-                    sdpMLineIndex: event.candidate.sdpMLineIndex,
-                    sdpMid: event.candidate.sdpMid
-                })
-            } else {
-                console.log('🧊 ICE gathering complete')
-            }
-        }
+        // WebRTC Connection State Monitoring - ICE Candidates
+        // Note: ICE candidate sending is handled in the socket effect, but we log here
+        // The actual sending will be set up after socket is available
 
         pc.oniceconnectionstatechange = () => {
             console.log('🔗 ICE connection state:', pc.iceConnectionState)
@@ -325,11 +316,26 @@ export default function Home() {
         }
 
         pc.onicecandidate = (event) => {
-            if (event.candidate && socket && strangerId) {
-                socket.emit('webrtc-ice', {
-                    candidate: event.candidate,
-                    to: strangerId,
+            if (event.candidate) {
+                console.log('🧊 ICE candidate generated:', {
+                    candidate: event.candidate.candidate.substring(0, 50) + '...',
+                    sdpMLineIndex: event.candidate.sdpMLineIndex,
+                    sdpMid: event.candidate.sdpMid
                 })
+                
+                // Send ICE candidate if socket and strangerId are available
+                // Note: socket and strangerId might not be available yet, so we'll set this up in the socket effect
+                if (socket && strangerId) {
+                    socket.emit('webrtc-ice', {
+                        candidate: event.candidate,
+                        to: strangerId,
+                    })
+                    console.log('📤 Sent ICE candidate to stranger')
+                } else {
+                    console.warn('⚠️ ICE candidate generated but socket/strangerId not ready yet')
+                }
+            } else {
+                console.log('🧊 ICE gathering complete - no more candidates')
             }
         }
 
