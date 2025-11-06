@@ -602,7 +602,7 @@ export default function Home() {
     }
     
     // Helper function to handle incoming offer (moved outside to be accessible)
-    const handleIncomingOffer = async (offer: RTCSessionDescriptionInit) => {
+    const handleIncomingOffer = async (offer: RTCSessionDescriptionInit, senderId?: string) => {
       if (!peerConnectionRef.current) {
         console.error('Peer connection not ready')
         return
