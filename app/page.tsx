@@ -42,25 +42,33 @@ export default function Home() {
         })
 
     pc.ontrack = (event) => {
-      console.log('📥 Received remote track:', event.track.kind)
-      if (remoteVideoRef.current && event.streams[0]) {
-        console.log('Setting remote stream')
+      console.log('📥 Received remote track:', event.track.kind, event.track.readyState)
+      
+      if (event.track.kind === 'video' && remoteVideoRef.current && event.streams[0]) {
+        console.log('🎥 Setting remote VIDEO stream')
         
-        // Only set stream once (on first track)
+        // Set stream (only once)
         if (!remoteVideoRef.current.srcObject) {
           remoteVideoRef.current.srcObject = event.streams[0]
+          setRemoteVideoReady(true)
           
-          // Wait for video to be ready, then play
-          remoteVideoRef.current.onloadedmetadata = () => {
-            if (remoteVideoRef.current) {
-              remoteVideoRef.current.play()
-                .then(() => {
-                  console.log('✅ Remote video playing!')
-                  setRemoteVideoReady(true)
-                })
-                .catch((e) => console.error('Remote play error:', e))
+          // Force play - multiple attempts for reliability
+          const tryPlay = async (attempt = 1) => {
+            if (!remoteVideoRef.current) return
+            
+            try {
+              await remoteVideoRef.current.play()
+              console.log('✅ Remote video playing!')
+            } catch (error) {
+              console.warn(`Play attempt ${attempt} failed:`, error)
+              if (attempt < 3) {
+                setTimeout(() => tryPlay(attempt + 1), 300 * attempt)
+              }
             }
           }
+          
+          // Start playing after a short delay
+          setTimeout(() => tryPlay(), 200)
         }
       }
     }
@@ -271,9 +279,11 @@ export default function Home() {
             {/* Remote Video - Always rendered, never removed */}
             <video
               ref={remoteVideoRef}
+              autoPlay
               playsInline
               muted={false}
               className="w-full h-full object-cover bg-black"
+              style={{ visibility: remoteVideoReady ? 'visible' : 'hidden' }}
             />
 
                         {/* Placeholder */}
