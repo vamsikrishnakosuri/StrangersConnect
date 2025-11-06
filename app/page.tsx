@@ -86,11 +86,18 @@ export default function Home() {
       console.log('📡 Signaling state:', pc.signalingState)
     }
     
-    // Handle remote stream
+    // Handle remote stream - THIS IS WHERE THE OTHER PERSON'S VIDEO COMES IN
     pc.ontrack = (event) => {
-      console.log('Received remote track:', event.track.kind, event.streams.length, 'streams')
+      console.log('🎥 ========== REMOTE TRACK RECEIVED ==========')
+      console.log('Track kind:', event.track.kind)
       console.log('Track enabled:', event.track.enabled)
       console.log('Track readyState:', event.track.readyState)
+      console.log('Number of streams:', event.streams.length)
+      
+      if (event.track.kind === 'video') {
+        console.log('✅✅✅ VIDEO TRACK RECEIVED FROM STRANGER! ✅✅✅')
+        setRemoteVideoEnabled(true)
+      }
       
       // Ensure we're in video mode
       if (chatMode !== 'video') {
@@ -100,6 +107,7 @@ export default function Home() {
       
       if (remoteVideoRef.current && event.streams[0]) {
         const remoteStream = event.streams[0]
+        console.log('Setting remote video srcObject to stream:', remoteStream.id)
         remoteVideoRef.current.srcObject = remoteStream
         
         // Set attributes for iOS
@@ -107,25 +115,13 @@ export default function Home() {
         remoteVideoRef.current.setAttribute('webkit-playsinline', 'true')
         remoteVideoRef.current.setAttribute('x5-playsinline', 'true')
         
-        // Monitor remote video tracks
+        // Monitor remote video tracks state - THIS IS CRITICAL
         remoteStream.getVideoTracks().forEach((track) => {
-          console.log('Remote video track:', track.label, track.enabled)
-          track.onended = () => {
-            console.warn('Remote video track ended')
-            setRemoteVideoEnabled(false)
-          }
-          track.onmute = () => {
-            console.warn('Remote video track muted')
-          }
-          track.onunmute = () => {
-            console.log('Remote video track unmuted')
-            setRemoteVideoEnabled(true)
-          }
-        })
-        
-        // Monitor remote video tracks state
-        remoteStream.getVideoTracks().forEach((track) => {
-          console.log('Remote video track:', track.label, 'enabled:', track.enabled, 'readyState:', track.readyState)
+          console.log('🎥 Remote video track details:')
+          console.log('  - Label:', track.label)
+          console.log('  - Enabled:', track.enabled)
+          console.log('  - ReadyState:', track.readyState)
+          console.log('  - Muted:', track.muted)
           
           track.onended = () => {
             console.warn('❌ Remote video track ended')
@@ -144,7 +140,7 @@ export default function Home() {
           // Force enable the track
           if (!track.enabled) {
             track.enabled = true
-            console.log('Force enabled remote video track')
+            console.log('✅ Force enabled remote video track')
           }
         })
         
