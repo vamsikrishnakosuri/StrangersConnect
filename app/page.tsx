@@ -427,54 +427,24 @@ export default function Home() {
       }
     })
 
-    // WebRTC signaling handlers
-    newSocket.on('webrtc-offer', async (data: { offer: RTCSessionDescriptionInit; senderId: string }) => {
-      try {
-        // If stranger sent an offer, switch to video mode and accept
-        if (!isMatched) return
-        
-        console.log('Received WebRTC offer from stranger, switching to video mode...')
-        
-        // Switch to video mode if not already - this will trigger stream start
-        if (chatMode !== 'video') {
-          console.log('Auto-switching to video mode...')
-          setChatMode('video')
-          
-          // Give React time to update state, then start stream
-          setTimeout(async () => {
-            if (!localStreamRef.current) {
-              console.log('Starting local stream for incoming offer...')
-              await startLocalStream()
-            }
-            
-            if (!peerConnectionRef.current) {
-              console.log('Initializing peer connection for incoming offer...')
-              initializePeerConnection()
-            }
-            
-            // Continue with handling the offer
-            if (peerConnectionRef.current && localStreamRef.current) {
-              await handleIncomingOffer(data.offer)
-            }
-          }, 100)
-          return
-        }
-        
-        // If already in video mode, handle offer immediately
-        if (!peerConnectionRef.current) {
-          initializePeerConnection()
-          
-          // Start local stream if not already started
-          if (!localStreamRef.current) {
-            await startLocalStream()
+    // Store ICE candidates until remote description is set
+    const pendingIceCandidates: RTCIceCandidateInit[] = []
+    
+    // Function to process pending ICE candidates
+    const processPendingIceCandidates = async () => {
+      if (peerConnectionRef.current && peerConnectionRef.current.remoteDescription) {
+        console.log('Processing', pendingIceCandidates.length, 'pending ICE candidates')
+        for (const candidate of pendingIceCandidates) {
+          try {
+            await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(candidate))
+            console.log('Added pending ICE candidate')
+          } catch (error) {
+            console.error('Error adding pending ICE candidate:', error)
           }
         }
-        
-        await handleIncomingOffer(data.offer)
-      } catch (error) {
-        console.error('Error handling WebRTC offer:', error)
+        pendingIceCandidates.length = 0 // Clear array
       }
-    })
+    }
     
     // Helper function to handle incoming offer
     const handleIncomingOffer = async (offer: RTCSessionDescriptionInit) => {
@@ -515,6 +485,9 @@ export default function Home() {
         await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(offer))
         console.log('Set remote description successfully')
         
+        // Process any pending ICE candidates now that remote description is set
+        await processPendingIceCandidates()
+        
         const answer = await peerConnectionRef.current.createAnswer({
           offerToReceiveAudio: true,
           offerToReceiveVideo: true,
@@ -542,6 +515,9 @@ export default function Home() {
           await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(data.answer))
           console.log('Set remote description from answer successfully')
           
+          // Process any pending ICE candidates now that remote description is set
+          await processPendingIceCandidates()
+          
           // Check connection state
           console.log('Peer connection state:', peerConnectionRef.current.connectionState)
           console.log('ICE connection state:', peerConnectionRef.current.iceConnectionState)
@@ -557,9 +533,16 @@ export default function Home() {
       console.log('Received ICE candidate from stranger')
       if (peerConnectionRef.current && data.candidate) {
         try {
-          await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(data.candidate))
-          console.log('Added ICE candidate successfully')
-          console.log('ICE connection state:', peerConnectionRef.current.iceConnectionState)
+          // Only add ICE candidate if remote description is set
+          if (peerConnectionRef.current.remoteDescription) {
+            await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(data.candidate))
+            console.log('Added ICE candidate successfully')
+            console.log('ICE connection state:', peerConnectionRef.current.iceConnectionState)
+          } else {
+            // Store candidate to add later
+            console.log('Storing ICE candidate (remote description not set yet)')
+            pendingIceCandidates.push(data.candidate)
+          }
         } catch (error) {
           console.error('Error adding ICE candidate:', error)
         }
