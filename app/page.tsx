@@ -1190,9 +1190,11 @@ export default function Home() {
                                 }
                             }}
                             onMouseUp={() => setLocalVideoDragging(false)}
-                            onMouseLeave={() => setLocalVideoDragging(false)}
+                            onMouseLeave={() => {
+                                setLocalVideoDragging(false)
+                                setShowLocalControls(false)
+                            }}
                             onMouseEnter={() => setShowLocalControls(true)}
-                            onMouseLeave={() => setShowLocalControls(false)}
                         >
                             <video
                                 ref={localVideoRef}
