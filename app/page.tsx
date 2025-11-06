@@ -47,9 +47,14 @@ export default function Home() {
     
     // Handle remote stream
     pc.ontrack = (event) => {
+      console.log('Received remote track:', event.track.kind)
       if (remoteVideoRef.current && event.streams[0]) {
         remoteVideoRef.current.srcObject = event.streams[0]
+        remoteVideoRef.current.play().catch((error) => {
+          console.error('Error playing remote video:', error)
+        })
         setRemoteVideoEnabled(true)
+        console.log('Remote video enabled')
       }
     }
 
@@ -80,6 +85,9 @@ export default function Home() {
       
       if (localVideoRef.current) {
         localVideoRef.current.srcObject = stream
+        localVideoRef.current.play().catch((error) => {
+          console.error('Error playing local video:', error)
+        })
       }
 
       // Add tracks to peer connection if it exists
@@ -96,6 +104,8 @@ export default function Home() {
 
       setIsVideoEnabled(true)
       setIsAudioEnabled(true)
+      
+      console.log('Local stream started:', stream.getVideoTracks().length, 'video tracks')
     } catch (error) {
       console.error('Error accessing media devices:', error)
       alert('Could not access camera/microphone. Please check permissions.')
@@ -444,7 +454,8 @@ export default function Home() {
               ref={remoteVideoRef}
               autoPlay
               playsInline
-              className="w-full h-full object-cover"
+              muted={false}
+              className="w-full h-full object-cover bg-black"
               style={{ display: remoteVideoEnabled ? 'block' : 'none' }}
             />
             
@@ -459,20 +470,21 @@ export default function Home() {
             )}
 
             {/* Local Video (Picture-in-Picture) */}
-            {isVideoEnabled && (
-              <div className="absolute bottom-4 right-4 w-48 h-36 rounded-lg overflow-hidden border-2 border-white shadow-lg">
+            {localStreamRef.current && (
+              <div className="absolute bottom-4 right-4 w-48 h-36 rounded-lg overflow-hidden border-2 border-white shadow-lg bg-black">
                 <video
                   ref={localVideoRef}
                   autoPlay
                   playsInline
                   muted
                   className="w-full h-full object-cover"
+                  style={{ backgroundColor: 'black' }}
                 />
               </div>
             )}
 
             {/* Video Controls */}
-            <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex gap-2">
+            <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex gap-2 z-10">
               <button
                 onClick={toggleVideo}
                 className={`p-3 rounded-full ${isVideoEnabled ? 'bg-gray-700' : 'bg-red-600'} text-white hover:opacity-80 transition`}
@@ -488,6 +500,16 @@ export default function Home() {
                 {isAudioEnabled ? '🎤' : '🔇'}
               </button>
             </div>
+            
+            {/* Debug Info */}
+            {process.env.NODE_ENV === 'development' && (
+              <div className="absolute top-4 left-4 bg-black bg-opacity-50 text-white text-xs p-2 rounded z-10">
+                <div>Local: {isVideoEnabled ? '✅' : '❌'}</div>
+                <div>Remote: {remoteVideoEnabled ? '✅' : '❌'}</div>
+                <div>Stream: {localStreamRef.current ? '✅' : '❌'}</div>
+                <div>Peer: {peerConnectionRef.current ? '✅' : '❌'}</div>
+              </div>
+            )}
           </div>
         )}
 
