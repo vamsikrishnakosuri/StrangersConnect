@@ -127,13 +127,25 @@ export default function Home() {
   }
 
   // Toggle video
-  const toggleVideo = () => {
+  const toggleVideo = async () => {
     if (localStreamRef.current) {
       const videoTrack = localStreamRef.current.getVideoTracks()[0]
       if (videoTrack) {
         videoTrack.enabled = !videoTrack.enabled
         setIsVideoEnabled(videoTrack.enabled)
+        console.log('Video track enabled:', videoTrack.enabled)
+        
+        // Ensure video element is visible and playing
+        if (localVideoRef.current && videoTrack.enabled) {
+          localVideoRef.current.style.display = 'block'
+          localVideoRef.current.play().catch((error) => {
+            console.error('Error playing video after toggle:', error)
+          })
+        }
       }
+    } else {
+      // If no stream, try to start it
+      await startLocalStream()
     }
   }
 
