@@ -48,21 +48,42 @@ export default function Home() {
 
     const pc = new RTCPeerConnection(configuration)
     
-    // Monitor connection state
+    // Monitor connection state - CRITICAL for debugging
     pc.onconnectionstatechange = () => {
-      console.log('Peer connection state changed:', pc.connectionState)
+      console.log('🔌 Peer connection state changed:', pc.connectionState)
       if (pc.connectionState === 'connected') {
-        console.log('✅ WebRTC connection established!')
+        console.log('✅✅✅ WebRTC CONNECTION FULLY ESTABLISHED! ✅✅✅')
+      } else if (pc.connectionState === 'disconnected') {
+        console.warn('⚠️ WebRTC connection disconnected')
+        setRemoteVideoEnabled(false)
       } else if (pc.connectionState === 'failed') {
-        console.error('❌ WebRTC connection failed')
+        console.error('❌ WebRTC connection failed - may need TURN server')
+        setRemoteVideoEnabled(false)
+      } else if (pc.connectionState === 'closed') {
+        console.log('WebRTC connection closed')
+        setRemoteVideoEnabled(false)
       }
     }
     
     pc.oniceconnectionstatechange = () => {
-      console.log('ICE connection state:', pc.iceConnectionState)
+      console.log('🧊 ICE connection state:', pc.iceConnectionState)
       if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
-        console.log('✅ ICE connection established!')
+        console.log('✅✅✅ ICE CONNECTION ESTABLISHED! ✅✅✅')
+      } else if (pc.iceConnectionState === 'failed') {
+        console.error('❌ ICE connection failed - firewall/NAT issue, may need TURN server')
+      } else if (pc.iceConnectionState === 'disconnected') {
+        console.warn('⚠️ ICE connection disconnected')
       }
+    }
+    
+    // Monitor ICE gathering state
+    pc.onicegatheringstatechange = () => {
+      console.log('🧊 ICE gathering state:', pc.iceGatheringState)
+    }
+    
+    // Monitor signaling state
+    pc.onsignalingstatechange = () => {
+      console.log('📡 Signaling state:', pc.signalingState)
     }
     
     // Handle remote stream
@@ -102,29 +123,71 @@ export default function Home() {
           }
         })
         
-        // Force play with retry
+        // Monitor remote video tracks state
+        remoteStream.getVideoTracks().forEach((track) => {
+          console.log('Remote video track:', track.label, 'enabled:', track.enabled, 'readyState:', track.readyState)
+          
+          track.onended = () => {
+            console.warn('❌ Remote video track ended')
+            setRemoteVideoEnabled(false)
+          }
+          
+          track.onmute = () => {
+            console.warn('⚠️ Remote video track muted')
+          }
+          
+          track.onunmute = () => {
+            console.log('✅ Remote video track unmuted')
+            setRemoteVideoEnabled(true)
+          }
+          
+          // Force enable the track
+          if (!track.enabled) {
+            track.enabled = true
+            console.log('Force enabled remote video track')
+          }
+        })
+        
+        // Force play with retry - THIS MAKES THE VIDEO VISIBLE
         const playRemoteVideo = async (attempt = 1) => {
           try {
-            await remoteVideoRef.current!.play()
-            console.log('Remote video playing successfully')
+            if (!remoteVideoRef.current) {
+              console.error('remoteVideoRef is null, cannot play')
+              return
+            }
+            
+            console.log(`Attempting to play remote video (attempt ${attempt})...`)
+            await remoteVideoRef.current.play()
+            console.log('✅ Remote video playing successfully!')
             setRemoteVideoEnabled(true)
             
             // Ensure video is visible
             if (remoteVideoRef.current) {
               remoteVideoRef.current.style.display = 'block'
               remoteVideoRef.current.style.opacity = '1'
-              console.log('Remote video element is now visible')
+              remoteVideoRef.current.style.visibility = 'visible'
+              console.log('✅ Remote video element is now visible and playing')
+              console.log('Video width:', remoteVideoRef.current.videoWidth)
+              console.log('Video height:', remoteVideoRef.current.videoHeight)
             }
           } catch (error) {
-            console.error(`Error playing remote video (attempt ${attempt}):`, error)
-            if (attempt < 3) {
-              setTimeout(() => playRemoteVideo(attempt + 1), 200 * attempt)
+            console.error(`❌ Error playing remote video (attempt ${attempt}):`, error)
+            if (attempt < 5) {
+              setTimeout(() => playRemoteVideo(attempt + 1), 300 * attempt)
+            } else {
+              console.error('❌ Failed to play remote video after 5 attempts')
+              // Try one more time after a longer delay
+              setTimeout(() => {
+                if (remoteVideoRef.current && remoteVideoRef.current.srcObject) {
+                  remoteVideoRef.current.play().catch(e => console.error('Final play attempt failed:', e))
+                }
+              }, 2000)
             }
           }
         }
         
         playRemoteVideo()
-        console.log('Remote video setup complete')
+        console.log('✅ Remote video setup initiated')
       } else {
         console.warn('Remote video ref or stream not available')
       }
@@ -824,7 +887,7 @@ export default function Home() {
         {/* Video Chat Container */}
         {chatMode === 'video' && isMatched && (
           <div className="mb-4 bg-black rounded-lg overflow-hidden relative" style={{ aspectRatio: '16/9' }}>
-            {/* Remote Video */}
+            {/* Remote Video - THIS IS WHAT SHOWS THE OTHER PERSON'S VIDEO */}
             <video
               ref={remoteVideoRef}
               autoPlay
@@ -841,18 +904,38 @@ export default function Home() {
                 top: 0,
                 left: 0,
                 zIndex: 1,
+                visibility: remoteVideoEnabled ? 'visible' : 'hidden',
               }}
               onLoadedMetadata={() => {
-                console.log('Remote video metadata loaded')
+                console.log('✅ Remote video metadata loaded')
+                console.log('Video dimensions:', remoteVideoRef.current?.videoWidth, 'x', remoteVideoRef.current?.videoHeight)
                 setRemoteVideoEnabled(true)
+                // Force play if paused
+                if (remoteVideoRef.current && remoteVideoRef.current.paused) {
+                  remoteVideoRef.current.play().catch(e => console.error('Error playing on metadata:', e))
+                }
               }}
               onCanPlay={() => {
-                console.log('Remote video can play')
+                console.log('✅ Remote video can play')
                 setRemoteVideoEnabled(true)
+                // Force play if paused
+                if (remoteVideoRef.current && remoteVideoRef.current.paused) {
+                  remoteVideoRef.current.play().catch(e => console.error('Error playing on canplay:', e))
+                }
               }}
               onPlay={() => {
-                console.log('Remote video started playing')
+                console.log('✅✅✅ REMOTE VIDEO IS NOW PLAYING! ✅✅✅')
                 setRemoteVideoEnabled(true)
+              }}
+              onPause={() => {
+                console.warn('⚠️ Remote video paused')
+              }}
+              onError={(e) => {
+                console.error('❌ Remote video error:', e)
+                setRemoteVideoEnabled(false)
+              }}
+              onStalled={() => {
+                console.warn('⚠️ Remote video stalled')
               }}
             />
             
