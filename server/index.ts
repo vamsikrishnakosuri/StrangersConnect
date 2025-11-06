@@ -8,7 +8,6 @@ const httpServer = createServer(app)
 
 // PeerJS server for WebRTC signaling
 const peerServer = ExpressPeerServer(httpServer, {
-  debug: true,
   path: '/',
 })
 
