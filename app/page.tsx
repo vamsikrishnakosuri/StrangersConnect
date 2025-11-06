@@ -108,39 +108,90 @@ export default function Home() {
     const createPeerConnection = (currentSocket: Socket | null, currentStrangerId: string | null) => {
         const pc = new RTCPeerConnection({
             iceServers: [
+                // STUN servers for NAT discovery
                 { urls: 'stun:stun.l.google.com:19302' },
                 { urls: 'stun:stun1.l.google.com:19302' },
+                // TURN servers for relay (works behind symmetric NATs, corporate firewalls)
+                // Using OpenRelay's free TURN servers
+                {
+                    urls: [
+                        'turn:openrelay.metered.ca:80',
+                        'turn:openrelay.metered.ca:443',
+                        'turn:openrelay.metered.ca:80?transport=tcp',
+                        'turn:openrelay.metered.ca:443?transport=tcp',
+                    ],
+                    username: 'openrelayproject',
+                    credential: 'openrelayproject',
+                },
+                // Fallback TURN servers
+                {
+                    urls: [
+                        'turn:relay.metered.ca:80',
+                        'turn:relay.metered.ca:443',
+                    ],
+                    username: 'openrelayproject',
+                    credential: 'openrelayproject',
+                },
             ],
+            iceTransportPolicy: 'all', // Try both relay and direct connections
         })
 
         // WebRTC Connection State Monitoring - ICE Candidates
         // Note: ICE candidate sending is handled in the socket effect, but we log here
         // The actual sending will be set up after socket is available
 
+        // Enhanced ICE connection state logging
         pc.oniceconnectionstatechange = () => {
             const state = pc.iceConnectionState
-            console.log('🔗 ICE connection state:', state)
+            console.log('🧊 iceConnectionState =', state)
             if (state === 'failed' || state === 'disconnected') {
                 console.error('❌ ICE connection failed/disconnected!')
+                console.error('📊 Connection details:', {
+                    iceConnectionState: pc.iceConnectionState,
+                    connectionState: pc.connectionState,
+                    signalingState: pc.signalingState,
+                })
             } else if (state === 'connected') {
                 console.log('✅✅✅ ICE CONNECTED! ✅✅✅')
             } else if (state === 'checking') {
                 console.log('🔄 ICE connection checking...')
             } else if (state === 'completed') {
                 console.log('✅ ICE connection completed!')
+            } else if (state === 'new') {
+                console.log('🆕 ICE connection state: new (waiting for candidates)')
             }
         }
 
+        // Enhanced connection state logging
         pc.onconnectionstatechange = () => {
             const state = pc.connectionState
-            console.log('🔗 WebRTC connection state:', state)
+            console.log('🔗 connectionState =', state)
             if (state === 'failed') {
                 console.error('❌ WebRTC connection failed!')
+                console.error('📊 Connection details:', {
+                    iceConnectionState: pc.iceConnectionState,
+                    connectionState: pc.connectionState,
+                    signalingState: pc.signalingState,
+                })
             } else if (state === 'connected') {
                 console.log('✅✅✅ WebRTC CONNECTED! ✅✅✅')
             } else if (state === 'connecting') {
                 console.log('🔄 WebRTC connecting...')
+            } else if (state === 'new') {
+                console.log('🆕 WebRTC connection state: new')
             }
+        }
+
+        // ICE candidate error logging
+        pc.onicecandidateerror = (event: Event) => {
+            const errorEvent = event as RTCPeerConnectionIceErrorEvent
+            console.warn('🧊 ICE candidate error:', {
+                address: errorEvent.address,
+                port: errorEvent.port,
+                url: errorEvent.url,
+                errorCode: errorEvent.errorCode,
+                errorText: errorEvent.errorText,
+            })
         }
 
         pc.onicegatheringstatechange = () => {
@@ -480,10 +531,16 @@ export default function Home() {
 
         pc.onicecandidate = (event) => {
             if (event.candidate) {
-                console.log('🧊 ICE candidate generated:', {
-                    candidate: event.candidate.candidate.substring(0, 50) + '...',
+                // Check if this is a relay candidate (TURN)
+                const isRelay = event.candidate.candidate.includes('relay') || 
+                                event.candidate.candidate.includes('typ relay')
+                const candidateType = isRelay ? '🔄 RELAY (TURN)' : '📡 DIRECT/STUN'
+                
+                console.log(`🧊 ICE candidate generated (${candidateType}):`, {
+                    candidate: event.candidate.candidate.substring(0, 80) + '...',
                     sdpMLineIndex: event.candidate.sdpMLineIndex,
-                    sdpMid: event.candidate.sdpMid
+                    sdpMid: event.candidate.sdpMid,
+                    type: isRelay ? 'relay' : 'host/srflx',
                 })
 
                 // Send ICE candidate if socket and strangerId are available
@@ -795,23 +852,23 @@ export default function Home() {
         })
 
         newSocket.on('webrtc-ice', async (data: { candidate: RTCIceCandidateInit; from?: string }) => {
-            console.log('🧊 Received ICE candidate from stranger', { 
-                from: data.from, 
+            console.log('🧊 Received ICE candidate from stranger', {
+                from: data.from,
                 hasCandidate: !!data.candidate,
-                candidatePreview: data.candidate?.candidate?.substring(0, 50) 
+                candidatePreview: data.candidate?.candidate?.substring(0, 50)
             })
-            
+
             if (!data.candidate) {
                 console.log('🧊 Received null ICE candidate (gathering complete signal)')
                 return
             }
-            
+
             if (peerConnectionRef.current) {
                 try {
                     // Allow adding candidates even before remote description is set (they'll be queued)
                     await peerConnectionRef.current.addIceCandidate(data.candidate)
                     console.log('✅ Added ICE candidate to peer connection')
-                    
+
                     // Log connection state after adding candidate
                     setTimeout(() => {
                         const pc = peerConnectionRef.current
