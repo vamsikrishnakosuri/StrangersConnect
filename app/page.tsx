@@ -798,7 +798,6 @@ export default function Home() {
             console.log('🧊 Received ICE candidate from stranger', { 
                 from: data.from, 
                 hasCandidate: !!data.candidate,
-                candidateType: data.candidate?.type,
                 candidatePreview: data.candidate?.candidate?.substring(0, 50) 
             })
             
