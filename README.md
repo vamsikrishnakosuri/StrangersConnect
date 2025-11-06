@@ -2,7 +2,6 @@
 
 A free and open source application that allows strangers from around the world to connect and chat anonymously.
 
-<<<<<<< HEAD
 ## Features ✨
 
 - **Real-time Chat**: Instant messaging with WebSocket technology
@@ -148,6 +147,4 @@ If you encounter any issues or have suggestions, please open an issue on GitHub.
 ---
 
 Made with ❤️ for connecting people around the world
-=======
->>>>>>> 039b024d5d9dd96b3b01eaf61456d350aeabe6f5
 
