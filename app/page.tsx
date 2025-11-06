@@ -116,18 +116,28 @@ export default function Home() {
         // The actual sending will be set up after socket is available
 
         pc.oniceconnectionstatechange = () => {
-            console.log('🔗 ICE connection state:', pc.iceConnectionState)
-            if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
+            const state = pc.iceConnectionState
+            console.log('🔗 ICE connection state:', state)
+            if (state === 'failed' || state === 'disconnected') {
                 console.error('❌ ICE connection failed/disconnected!')
+            } else if (state === 'connected') {
+                console.log('✅✅✅ ICE CONNECTED! ✅✅✅')
+            } else if (state === 'checking') {
+                console.log('🔄 ICE connection checking...')
+            } else if (state === 'completed') {
+                console.log('✅ ICE connection completed!')
             }
         }
 
         pc.onconnectionstatechange = () => {
-            console.log('🔗 Connection state:', pc.connectionState)
-            if (pc.connectionState === 'failed') {
+            const state = pc.connectionState
+            console.log('🔗 WebRTC connection state:', state)
+            if (state === 'failed') {
                 console.error('❌ WebRTC connection failed!')
-            } else if (pc.connectionState === 'connected') {
+            } else if (state === 'connected') {
                 console.log('✅✅✅ WebRTC CONNECTED! ✅✅✅')
+            } else if (state === 'connecting') {
+                console.log('🔄 WebRTC connecting...')
             }
         }
 
@@ -324,20 +334,46 @@ export default function Home() {
                     remoteVideoRef.current.play()
                         .then(() => {
                             console.log('✅✅✅ REMOTE VIDEO PLAYING! ✅✅✅')
-                            const width = remoteVideoRef.current?.videoWidth || 0
-                            const height = remoteVideoRef.current?.videoHeight || 0
-                            console.log('Video dimensions:', width, 'x', height)
-
-                            // CRITICAL: Check if video has actual dimensions
-                            if (width <= 2 && height <= 2) {
-                                console.error('⚠️⚠️⚠️ VIDEO HAS NO CONTENT! Dimensions are only', width, 'x', height)
-                                console.error('This means the remote peer is not sending video data!')
-                                console.error('Possible causes:')
-                                console.error('1. Remote peer camera not working')
-                                console.error('2. Remote peer camera permission denied')
-                                console.error('3. WebRTC connection issue')
-                                console.error('4. Remote video track ended or muted')
+                            
+                            // Check WebRTC connection state
+                            const pc = peerConnectionRef.current
+                            if (pc) {
+                                console.log('📊 WebRTC states:', {
+                                    iceConnectionState: pc.iceConnectionState,
+                                    connectionState: pc.connectionState,
+                                    signalingState: pc.signalingState
+                                })
                             }
+                            
+                            // Wait a bit for video to load, then check dimensions
+                            setTimeout(() => {
+                                const width = remoteVideoRef.current?.videoWidth || 0
+                                const height = remoteVideoRef.current?.videoHeight || 0
+                                console.log('📐 Video dimensions after play:', width, 'x', height)
+
+                                // CRITICAL: Check if video has actual dimensions
+                                if (width <= 2 && height <= 2) {
+                                    console.error('⚠️⚠️⚠️ VIDEO HAS NO CONTENT! Dimensions are only', width, 'x', height)
+                                    console.error('This means the remote peer is not sending video data!')
+                                    console.error('Possible causes:')
+                                    console.error('1. Remote peer camera not working')
+                                    console.error('2. Remote peer camera permission denied')
+                                    console.error('3. WebRTC connection issue - check ICE/connection state above')
+                                    console.error('4. Remote video track ended or muted')
+                                    
+                                    // Check connection state
+                                    if (pc) {
+                                        if (pc.iceConnectionState !== 'connected' && pc.iceConnectionState !== 'completed') {
+                                            console.error('❌ ICE connection not established! State:', pc.iceConnectionState)
+                                        }
+                                        if (pc.connectionState !== 'connected') {
+                                            console.error('❌ WebRTC connection not established! State:', pc.connectionState)
+                                        }
+                                    }
+                                } else {
+                                    console.log('✅✅✅ Video has content! Dimensions:', width, 'x', height)
+                                }
+                            }, 1000) // Wait 1 second for video to load
 
                             setShowPlayButton(false)
                         })
@@ -403,6 +439,16 @@ export default function Home() {
 
                 remoteVideoRef.current.onwaiting = () => {
                     console.warn('⚠️ Video waiting for data')
+                    // Check connection state when video is waiting
+                    const pc = peerConnectionRef.current
+                    if (pc) {
+                        console.warn('📊 Connection states while waiting:', {
+                            iceConnectionState: pc.iceConnectionState,
+                            connectionState: pc.connectionState,
+                            videoWidth: remoteVideoRef.current?.videoWidth || 0,
+                            videoHeight: remoteVideoRef.current?.videoHeight || 0
+                        })
+                    }
                 }
 
                 remoteVideoRef.current.onstalled = () => {
