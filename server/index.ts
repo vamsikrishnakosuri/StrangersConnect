@@ -87,6 +87,43 @@ io.on('connection', (socket) => {
     }
   })
 
+  // WebRTC signaling handlers
+  socket.on('webrtc-offer', (data: { offer: RTCSessionDescriptionInit; strangerId: string; senderId: string }) => {
+    const sender = users.get(data.senderId)
+    const stranger = users.get(data.strangerId)
+    
+    if (sender && stranger && sender.matchedWith === data.strangerId) {
+      io.to(stranger.socketId).emit('webrtc-offer', {
+        offer: data.offer,
+        senderId: data.senderId,
+      })
+    }
+  })
+
+  socket.on('webrtc-answer', (data: { answer: RTCSessionDescriptionInit; strangerId: string; senderId: string }) => {
+    const sender = users.get(data.senderId)
+    const stranger = users.get(data.strangerId)
+    
+    if (sender && stranger && sender.matchedWith === data.strangerId) {
+      io.to(stranger.socketId).emit('webrtc-answer', {
+        answer: data.answer,
+        senderId: data.senderId,
+      })
+    }
+  })
+
+  socket.on('webrtc-ice-candidate', (data: { candidate: RTCIceCandidateInit; strangerId: string; senderId: string }) => {
+    const sender = users.get(data.senderId)
+    const stranger = users.get(data.strangerId)
+    
+    if (sender && stranger && sender.matchedWith === data.strangerId) {
+      io.to(stranger.socketId).emit('webrtc-ice-candidate', {
+        candidate: data.candidate,
+        senderId: data.senderId,
+      })
+    }
+  })
+
   socket.on('disconnect-stranger', (data: { strangerId: string }) => {
     const userId = Array.from(users.entries()).find(
       ([_, user]) => user.socketId === socket.id
