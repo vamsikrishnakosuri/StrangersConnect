@@ -42,19 +42,122 @@ export default function Home() {
             ],
         })
 
+        // WebRTC Connection State Monitoring
+        pc.onicecandidate = (event) => {
+            if (event.candidate) {
+                console.log('🧊 ICE candidate:', {
+                    candidate: event.candidate.candidate.substring(0, 50) + '...',
+                    sdpMLineIndex: event.candidate.sdpMLineIndex,
+                    sdpMid: event.candidate.sdpMid
+                })
+            } else {
+                console.log('🧊 ICE gathering complete')
+            }
+        }
+
+        pc.oniceconnectionstatechange = () => {
+            console.log('🔗 ICE connection state:', pc.iceConnectionState)
+            if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
+                console.error('❌ ICE connection failed/disconnected!')
+            }
+        }
+
+        pc.onconnectionstatechange = () => {
+            console.log('🔗 Connection state:', pc.connectionState)
+            if (pc.connectionState === 'failed') {
+                console.error('❌ WebRTC connection failed!')
+            } else if (pc.connectionState === 'connected') {
+                console.log('✅✅✅ WebRTC CONNECTED! ✅✅✅')
+            }
+        }
+
+        pc.onicegatheringstatechange = () => {
+            console.log('🧊 ICE gathering state:', pc.iceGatheringState)
+        }
+
+        pc.onsignalingstatechange = () => {
+            console.log('📡 Signaling state:', pc.signalingState)
+        }
+
         pc.ontrack = (event) => {
             console.log('📥 Received remote track:', event.track.kind, event.track.readyState)
             console.log('📊 Track details:', {
                 enabled: event.track.enabled,
                 muted: event.track.muted,
                 readyState: event.track.readyState,
-                streams: event.streams.length
+                streams: event.streams.length,
+                id: event.track.id,
+                label: event.track.label
             })
+
+            // CRITICAL: Verify this is NOT our local stream
+            const remoteStream = event.streams[0]
+            if (remoteStream && localStreamRef.current) {
+                const remoteStreamId = remoteStream.id
+                const localStreamId = localStreamRef.current.id
+                if (remoteStreamId === localStreamId) {
+                    console.error('❌❌❌ ERROR: Remote stream ID matches local stream ID! This is our own stream!')
+                    return
+                }
+                console.log('✅ Stream ID check passed:', {
+                    remoteStreamId,
+                    localStreamId,
+                    match: remoteStreamId === localStreamId
+                })
+            }
+
+            // Verify track is actually active
+            const videoTrack = event.track.kind === 'video' ? event.track : null
+            if (videoTrack) {
+                console.log('🎥 Video track status:', {
+                    enabled: videoTrack.enabled,
+                    muted: videoTrack.muted,
+                    readyState: videoTrack.readyState,
+                    id: videoTrack.id,
+                    label: videoTrack.label
+                })
+
+                // Monitor track state changes
+                videoTrack.onended = () => {
+                    console.error('❌ Remote video track ended!')
+                }
+                videoTrack.onmute = () => {
+                    console.warn('⚠️ Remote video track muted!')
+                }
+                videoTrack.onunmute = () => {
+                    console.log('✅ Remote video track unmuted!')
+                }
+            }
 
             if (event.track.kind === 'video' && remoteVideoRef.current && event.streams[0]) {
                 console.log('🎥 Setting remote VIDEO stream')
                 console.log('Stream ID:', event.streams[0].id)
                 console.log('Video tracks in stream:', event.streams[0].getVideoTracks().length)
+                
+                // CRITICAL: Verify stream has active video tracks
+                const videoTracks = event.streams[0].getVideoTracks()
+                if (videoTracks.length === 0) {
+                    console.error('❌❌❌ ERROR: Stream has NO video tracks!')
+                    return
+                }
+                
+                const activeVideoTrack = videoTracks.find(t => t.enabled && t.readyState === 'live')
+                if (!activeVideoTrack) {
+                    console.error('❌❌❌ ERROR: No active video track found in stream!')
+                    console.log('Available tracks:', videoTracks.map(t => ({
+                        enabled: t.enabled,
+                        readyState: t.readyState,
+                        muted: t.muted
+                    })))
+                    return
+                }
+                
+                console.log('✅ Found active video track:', {
+                    id: activeVideoTrack.id,
+                    enabled: activeVideoTrack.enabled,
+                    readyState: activeVideoTrack.readyState,
+                    muted: activeVideoTrack.muted
+                })
 
                 // CRITICAL: Check if video element still exists
                 if (!remoteVideoRef.current) {
@@ -77,7 +180,7 @@ export default function Home() {
 
                     // NOW set the stream
                     remoteVideoRef.current.srcObject = event.streams[0]
-                    
+
                     // Verify srcObject was set
                     console.log('✅ srcObject set:', {
                         hasSrcObject: !!remoteVideoRef.current.srcObject,
@@ -86,7 +189,7 @@ export default function Home() {
                         videoTracks: event.streams[0].getVideoTracks().length,
                         audioTracks: event.streams[0].getAudioTracks().length
                     })
-                    
+
                     // Verify video element dimensions and positioning
                     const videoRect = remoteVideoRef.current.getBoundingClientRect()
                     console.log('📐 Video element dimensions:', {
@@ -99,7 +202,7 @@ export default function Home() {
                         opacity: window.getComputedStyle(remoteVideoRef.current).opacity,
                         zIndex: window.getComputedStyle(remoteVideoRef.current).zIndex
                     })
-                    
+
                     setRemoteVideoReady(true) // Set immediately so video is visible
 
                     // Try to play IMMEDIATELY - don't wait for events
@@ -153,9 +256,48 @@ export default function Home() {
 
                     remoteVideoRef.current.onloadedmetadata = () => {
                         console.log('✅✅✅ METADATA LOADED event fired! ✅✅✅')
+                        console.log('📊 Metadata loaded state:', {
+                            videoWidth: remoteVideoRef.current?.videoWidth,
+                            videoHeight: remoteVideoRef.current?.videoHeight,
+                            readyState: remoteVideoRef.current?.readyState,
+                            duration: remoteVideoRef.current?.duration
+                        })
                         if (remoteVideoRef.current && remoteVideoRef.current.paused) {
                             tryPlayVideo(999) // Mark as event-driven
                         }
+                    }
+
+                    remoteVideoRef.current.onloadeddata = () => {
+                        console.log('✅✅✅ DATA LOADED event fired! ✅✅✅')
+                        console.log('📊 Data loaded state:', {
+                            videoWidth: remoteVideoRef.current?.videoWidth,
+                            videoHeight: remoteVideoRef.current?.videoHeight,
+                            readyState: remoteVideoRef.current?.readyState
+                        })
+                    }
+
+                    remoteVideoRef.current.onplay = () => {
+                        console.log('✅✅✅ PLAY event fired! Video is playing! ✅✅✅')
+                    }
+
+                    remoteVideoRef.current.onplaying = () => {
+                        console.log('✅✅✅ PLAYING event fired! Video is actively playing! ✅✅✅')
+                    }
+
+                    remoteVideoRef.current.onpause = () => {
+                        console.warn('⚠️ Video paused')
+                    }
+
+                    remoteVideoRef.current.onwaiting = () => {
+                        console.warn('⚠️ Video waiting for data')
+                    }
+
+                    remoteVideoRef.current.onstalled = () => {
+                        console.error('❌ Video stalled')
+                    }
+
+                    remoteVideoRef.current.onsuspend = () => {
+                        console.warn('⚠️ Video suspended')
                     }
 
                     // Log current state
@@ -166,7 +308,11 @@ export default function Home() {
                         readyState: remoteVideoRef.current.readyState,
                         paused: remoteVideoRef.current.paused,
                         display: window.getComputedStyle(remoteVideoRef.current).display,
-                        visibility: window.getComputedStyle(remoteVideoRef.current).visibility
+                        visibility: window.getComputedStyle(remoteVideoRef.current).visibility,
+                        // Verify srcObject stream details
+                        srcObjectStreamId: (remoteVideoRef.current.srcObject as MediaStream)?.id,
+                        srcObjectVideoTracks: (remoteVideoRef.current.srcObject as MediaStream)?.getVideoTracks().length,
+                        srcObjectAudioTracks: (remoteVideoRef.current.srcObject as MediaStream)?.getAudioTracks().length
                     })
                 } else {
                     console.log('⚠️ srcObject already set, checking if it changed...')
