@@ -29,6 +29,7 @@ export default function Home() {
     const peerConnectionRef = useRef<RTCPeerConnection | null>(null)
     const messagesEndRef = useRef<HTMLDivElement>(null)
     const pendingIceCandidatesRef = useRef<RTCIceCandidate[]>([]) // Queue ICE candidates until strangerId is ready
+    const socketRef = useRef<Socket | null>(null) // Ref to access current socket in ICE candidate handler
 
     // Auto-scroll messages
     useEffect(() => {
@@ -103,7 +104,7 @@ export default function Home() {
     }, [isMatched, remoteVideoReady])
 
     // Initialize WebRTC peer connection
-    const createPeerConnection = () => {
+    const createPeerConnection = (currentSocket: Socket | null, currentStrangerId: string | null) => {
         const pc = new RTCPeerConnection({
             iceServers: [
                 { urls: 'stun:stun.l.google.com:19302' },
@@ -485,16 +486,20 @@ export default function Home() {
                 })
 
                 // Send ICE candidate if socket and strangerId are available
-                // Queue candidates if not ready yet (they'll be sent when matched)
-                if (socket && strangerId) {
-                    socket.emit('webrtc-ice', {
+                // Use refs to get current values (socket might change)
+                const socketToUse = socketRef.current || currentSocket
+                const strangerIdToUse = currentStrangerId  // Use parameter from createPeerConnection
+                
+                if (socketToUse && strangerIdToUse) {
+                    socketToUse.emit('webrtc-ice', {
                         candidate: event.candidate,
-                        to: strangerId,
+                        to: strangerIdToUse,
                     })
                     console.log('📤 Sent ICE candidate to stranger')
                 } else {
                     // Queue candidate for later - will be sent when strangerId is set
                     pendingIceCandidatesRef.current.push(event.candidate)
+                    console.log('📦 Queued ICE candidate (socket/strangerId not ready yet)')
                 }
             } else {
                 console.log('🧊 ICE gathering complete - no more candidates')
@@ -547,8 +552,8 @@ export default function Home() {
                 }
             }
 
-            // Create peer connection
-            const pc = createPeerConnection()
+            // Create peer connection - pass socket and strangerId for ICE candidate handling
+            const pc = createPeerConnection(socketRef.current, null) // strangerId not available yet in startVideo
 
             // Add all tracks - CRITICAL for sending video
             stream.getTracks().forEach((track) => {
@@ -605,20 +610,34 @@ export default function Home() {
             setStrangerId(data.strangerId)
             setMessages([{ id: uuidv4(), text: '🎥 Starting video...', sender: 'stranger' }])
 
-            // Send any queued ICE candidates now that we have strangerId
-            if (pendingIceCandidatesRef.current.length > 0) {
-                console.log(`📤 Sending ${pendingIceCandidatesRef.current.length} queued ICE candidates`)
-                pendingIceCandidatesRef.current.forEach(candidate => {
-                    newSocket.emit('webrtc-ice', {
-                        candidate: candidate,
-                        to: data.strangerId,
-                    })
-                })
-                pendingIceCandidatesRef.current = [] // Clear queue
-            }
-
             // ALWAYS start video for BOTH users - no matter who creates offer
             console.log('🎥 Starting camera...')
+            // Update socket ref before creating peer connection
+            socketRef.current = newSocket
+            
+            // Update peer connection's ICE candidate handler if it already exists
+            if (peerConnectionRef.current) {
+                peerConnectionRef.current.onicecandidate = (event) => {
+                    if (event.candidate) {
+                        console.log('🧊 ICE candidate generated (after match):', {
+                            candidate: event.candidate.candidate.substring(0, 50) + '...',
+                            sdpMLineIndex: event.candidate.sdpMLineIndex,
+                            sdpMid: event.candidate.sdpMid
+                        })
+                        
+                        if (newSocket && data.strangerId) {
+                            newSocket.emit('webrtc-ice', {
+                                candidate: event.candidate,
+                                to: data.strangerId,
+                            })
+                            console.log('📤 Sent ICE candidate to stranger (after match)')
+                        } else {
+                            pendingIceCandidatesRef.current.push(event.candidate)
+                        }
+                    }
+                }
+            }
+            
             const pc = await startVideo()
 
             if (!pc) {
