@@ -48,13 +48,39 @@ export default function Home() {
     // Handle remote stream
     pc.ontrack = (event) => {
       console.log('Received remote track:', event.track.kind, event.streams.length, 'streams')
+      console.log('Track enabled:', event.track.enabled)
+      console.log('Track readyState:', event.track.readyState)
+      
+      // Ensure we're in video mode
+      if (chatMode !== 'video') {
+        console.log('Auto-switching to video mode for remote track...')
+        setChatMode('video')
+      }
+      
       if (remoteVideoRef.current && event.streams[0]) {
-        remoteVideoRef.current.srcObject = event.streams[0]
+        const remoteStream = event.streams[0]
+        remoteVideoRef.current.srcObject = remoteStream
         
         // Set attributes for iOS
         remoteVideoRef.current.setAttribute('playsinline', 'true')
         remoteVideoRef.current.setAttribute('webkit-playsinline', 'true')
         remoteVideoRef.current.setAttribute('x5-playsinline', 'true')
+        
+        // Monitor remote video tracks
+        remoteStream.getVideoTracks().forEach((track) => {
+          console.log('Remote video track:', track.label, track.enabled)
+          track.onended = () => {
+            console.warn('Remote video track ended')
+            setRemoteVideoEnabled(false)
+          }
+          track.onmute = () => {
+            console.warn('Remote video track muted')
+          }
+          track.onunmute = () => {
+            console.log('Remote video track unmuted')
+            setRemoteVideoEnabled(true)
+          }
+        })
         
         // Force play with retry
         const playRemoteVideo = async (attempt = 1) => {
@@ -67,6 +93,7 @@ export default function Home() {
             if (remoteVideoRef.current) {
               remoteVideoRef.current.style.display = 'block'
               remoteVideoRef.current.style.opacity = '1'
+              console.log('Remote video element is now visible')
             }
           } catch (error) {
             console.error(`Error playing remote video (attempt ${attempt}):`, error)
@@ -78,6 +105,8 @@ export default function Home() {
         
         playRemoteVideo()
         console.log('Remote video setup complete')
+      } else {
+        console.warn('Remote video ref or stream not available')
       }
     }
 
