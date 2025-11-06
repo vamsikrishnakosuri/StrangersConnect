@@ -1339,7 +1339,11 @@ export default function Home() {
                                             .catch(err => console.error('Button play failed:', err))
                                     }
                                 }}
-                                className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold text-lg shadow-lg"
+                                className={`px-8 py-4 rounded-xl font-semibold text-lg transition-all duration-200 shadow-2xl hover:shadow-3xl transform hover:scale-105 active:scale-95 ${
+                                    isDarkMode 
+                                        ? 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white' 
+                                        : 'bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-400 hover:to-purple-400 text-white'
+                                }`}
                             >
                                 ▶️ Click to See Stranger
                             </button>
