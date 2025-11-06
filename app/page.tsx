@@ -673,6 +673,39 @@ export default function Home() {
         newSocket.on('webrtc-offer', async (data: { offer: RTCSessionDescriptionInit; from: string }) => {
             console.log('📨 Received offer from:', data.from)
 
+            // Update strangerId ref if we're receiving an offer (we might not have been matched yet)
+            if (!strangerIdRef.current) {
+                strangerIdRef.current = data.from
+                setStrangerId(data.from)
+            }
+            
+            // Update ICE candidate handler to use current socket and strangerId
+            if (peerConnectionRef.current) {
+                peerConnectionRef.current.onicecandidate = (event) => {
+                    if (event.candidate) {
+                        console.log('🧊 ICE candidate generated (in offer handler):', {
+                            candidate: event.candidate.candidate.substring(0, 50) + '...',
+                            sdpMLineIndex: event.candidate.sdpMLineIndex,
+                            sdpMid: event.candidate.sdpMid
+                        })
+                        
+                        const socketToUse = socketRef.current
+                        const strangerIdToUse = strangerIdRef.current
+                        
+                        if (socketToUse && strangerIdToUse) {
+                            socketToUse.emit('webrtc-ice', {
+                                candidate: event.candidate,
+                                to: strangerIdToUse,
+                            })
+                            console.log('📤 Sent ICE candidate to stranger (in offer handler)')
+                        } else {
+                            pendingIceCandidatesRef.current.push(event.candidate)
+                            console.log('📦 Queued ICE candidate')
+                        }
+                    }
+                }
+            }
+
             // Wait for peer connection - camera might still be starting
             let retries = 0
             while (!peerConnectionRef.current && retries < 50) {
@@ -694,6 +727,18 @@ export default function Home() {
 
                     newSocket.emit('webrtc-answer', { answer, to: data.from })
                     console.log('📤 Sent answer to:', data.from)
+                    
+                    // Send any queued ICE candidates now
+                    if (pendingIceCandidatesRef.current.length > 0) {
+                        console.log(`📤 Sending ${pendingIceCandidatesRef.current.length} queued ICE candidates`)
+                        pendingIceCandidatesRef.current.forEach(candidate => {
+                            newSocket.emit('webrtc-ice', {
+                                candidate: candidate,
+                                to: data.from,
+                            })
+                        })
+                        pendingIceCandidatesRef.current = []
+                    }
                 } catch (error) {
                     console.error('❌ Error handling offer:', error)
                 }
