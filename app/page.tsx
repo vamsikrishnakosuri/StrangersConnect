@@ -394,12 +394,12 @@ export default function Home() {
                     </div>
                 </div>
 
-                {/* Video Container - ALWAYS in DOM, just conditionally visible */}
+                {/* Video Container - ALWAYS in DOM, never display:none */}
                 <div
                     className="mb-4 bg-black rounded-lg overflow-hidden relative cursor-pointer"
                     style={{ 
                         aspectRatio: '16/9',
-                        display: isMatched ? 'block' : 'none'
+                        display: isMatched ? 'block' : 'none' // Hide container when not matched
                     }}
                     onClick={() => {
                         // Make entire video area clickable to start playback
@@ -426,7 +426,7 @@ export default function Home() {
                             width: '100%',
                             height: '100%',
                             display: 'block', // Always block, never none
-                            opacity: remoteVideoReady ? '1' : '0.01',
+                            opacity: isMatched ? (remoteVideoReady ? '1' : '0.01') : '0.01', // Slightly visible even when container hidden
                             position: 'absolute',
                             top: 0,
                             left: 0,
