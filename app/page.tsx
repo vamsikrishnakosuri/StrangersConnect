@@ -1143,7 +1143,6 @@ export default function Home() {
                         overflow: 'hidden', // Keep overflow hidden but ensure video fills container
                         position: 'relative' // Establish positioning context
                     }}
-                >
                     onClick={() => {
                         // Make entire video area clickable to start playback
                         if (remoteVideoRef.current && remoteVideoRef.current.paused) {
