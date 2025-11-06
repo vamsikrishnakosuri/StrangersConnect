@@ -1,0 +1,15 @@
+📸 ADD YOUR LOGO HERE
+
+To add your logo:
+
+1. Save your logo file as: logo.png
+2. Place it in this folder: public/logo.png
+3. Recommended size: 512x512px or larger
+4. Format: PNG with transparent or white background
+
+The logo will automatically appear in:
+✅ Header (top left)
+✅ Homepage (large display)
+✅ Browser tab (favicon)
+
+Once you add the file, it will work immediately!

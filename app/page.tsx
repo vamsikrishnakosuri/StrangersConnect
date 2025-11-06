@@ -1087,16 +1087,16 @@ export default function Home() {
     }
 
     return (
-        <div className={`min-h-screen transition-colors duration-300 ${isDarkMode ? 'bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900' : 'bg-gradient-to-br from-gray-50 via-white to-gray-100'} ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+        <div className={`min-h-screen transition-colors duration-300 ${isDarkMode ? 'bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900' : 'bg-gradient-to-br from-yellow-50 via-white to-yellow-50'} ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
                 {/* Modern Header with Dark Mode Toggle */}
                 <div className="flex items-center justify-between mb-8">
                     <div className="flex items-center gap-4">
                         {/* Logo */}
                         <div className="flex items-center gap-3">
-                            <img 
-                                src="/logo.png" 
-                                alt="Strangers Connect Logo" 
+                            <img
+                                src="/logo.png"
+                                alt="Strangers Connect Logo"
                                 className="h-12 w-auto object-contain"
                                 onError={(e) => {
                                     // Fallback to gradient icon if logo not found
@@ -1106,7 +1106,7 @@ export default function Home() {
                                     if (fallback) fallback.style.display = 'flex'
                                 }}
                             />
-                            <div className={`hidden w-12 h-12 rounded-2xl ${isDarkMode ? 'bg-gradient-to-br from-blue-500 to-purple-600' : 'bg-gradient-to-br from-blue-400 to-purple-500'} items-center justify-center shadow-lg`}>
+                            <div className={`hidden w-12 h-12 rounded-2xl ${isDarkMode ? 'bg-gradient-to-br from-yellow-500 to-yellow-600' : 'bg-gradient-to-br from-yellow-400 to-yellow-500'} items-center justify-center shadow-lg border-2 ${isDarkMode ? 'border-yellow-400' : 'border-yellow-500'}`}>
                                 <span className="text-2xl">🎥</span>
                             </div>
                         </div>
@@ -1128,7 +1128,7 @@ export default function Home() {
                         {/* Dark Mode Toggle */}
                         <button
                             onClick={() => setIsDarkMode(!isDarkMode)}
-                            className={`p-3 rounded-xl transition-all duration-300 ${isDarkMode ? 'bg-gray-800 hover:bg-gray-700' : 'bg-gray-100 hover:bg-gray-200'} ${isDarkMode ? 'border border-gray-700' : 'border border-gray-200'}`}
+                            className={`p-3 rounded-xl transition-all duration-300 ${isDarkMode ? 'bg-gray-800 hover:bg-gray-700 border border-gray-700' : 'bg-yellow-100 hover:bg-yellow-200 border border-yellow-300'}`}
                             title={isDarkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
                         >
                             {isDarkMode ? (
@@ -1355,8 +1355,8 @@ export default function Home() {
                                     }
                                 }}
                                 className={`px-8 py-4 rounded-xl font-semibold text-lg transition-all duration-200 shadow-2xl hover:shadow-3xl transform hover:scale-105 active:scale-95 ${isDarkMode
-                                    ? 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white'
-                                    : 'bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-400 hover:to-purple-400 text-white'
+                                    ? 'bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-400 hover:to-yellow-500 text-black shadow-yellow-500/50'
+                                    : 'bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-300 hover:to-yellow-400 text-black shadow-yellow-400/50'
                                     }`}
                             >
                                 ▶️ Click to See Stranger
@@ -1532,7 +1532,7 @@ export default function Home() {
                         <div className="h-32 overflow-y-auto mb-3 space-y-2">
                             {messages.map((msg) => (
                                 <div key={msg.id} className={`flex ${msg.sender === 'me' ? 'justify-end' : 'justify-start'}`}>
-                                    <div className={`px-3 py-1 rounded-lg text-sm ${msg.sender === 'me' ? 'bg-blue-600' : 'bg-gray-700'
+                                    <div className={`px-3 py-1 rounded-lg text-sm ${msg.sender === 'me' ? 'bg-yellow-500 text-black' : 'bg-gray-700'
                                         }`}>
                                         {msg.text}
                                     </div>
@@ -1549,7 +1549,7 @@ export default function Home() {
                                 placeholder="Type a message..."
                                 className="flex-1 px-3 py-2 rounded bg-gray-700 border-none outline-none"
                             />
-                            <button onClick={sendMessage} className="px-4 py-2 bg-blue-600 rounded hover:bg-blue-700">
+                            <button onClick={sendMessage} className="px-4 py-2 bg-yellow-500 text-black rounded hover:bg-yellow-600 font-semibold transition-all">
                                 Send
                             </button>
                         </div>
@@ -1562,9 +1562,9 @@ export default function Home() {
                         <div className={`inline-block p-6 rounded-3xl mb-8 ${isDarkMode ? 'bg-gray-800/50' : 'bg-white/50'} backdrop-blur-sm border ${isDarkMode ? 'border-gray-700' : 'border-gray-200'} shadow-2xl`}>
                             {/* Logo on Homepage */}
                             <div className="mb-6 flex justify-center">
-                                <img 
-                                    src="/logo.png" 
-                                    alt="Strangers Connect" 
+                                <img
+                                    src="/logo.png"
+                                    alt="Strangers Connect"
                                     className="h-32 w-auto object-contain"
                                     onError={(e) => {
                                         // Fallback to emoji if logo not found
@@ -1573,11 +1573,11 @@ export default function Home() {
                                         const fallback = target.nextElementSibling as HTMLElement
                                         if (fallback) {
                                             fallback.style.display = 'block'
-                                            fallback.className = `text-7xl mb-4 ${isDarkMode ? 'text-blue-400' : 'text-blue-500'}`
+                                            fallback.className = `text-7xl mb-4 ${isDarkMode ? 'text-yellow-400' : 'text-yellow-500'}`
                                         }
                                     }}
                                 />
-                                <div className={`hidden text-7xl mb-4 ${isDarkMode ? 'text-blue-400' : 'text-blue-500'}`}>🌐</div>
+                                <div className={`hidden text-7xl mb-4 ${isDarkMode ? 'text-yellow-400' : 'text-yellow-500'}`}>🌐</div>
                             </div>
                             <h2 className={`text-3xl sm:text-4xl font-bold mb-3 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
                                 Connect with Strangers
@@ -1590,8 +1590,8 @@ export default function Home() {
                                 disabled={!isConnected}
                                 className={`px-8 py-4 rounded-xl font-semibold text-lg transition-all duration-200 shadow-xl hover:shadow-2xl transform hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${isConnected
                                     ? isDarkMode
-                                        ? 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white'
-                                        : 'bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-400 hover:to-purple-400 text-white'
+                                        ? 'bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-400 hover:to-yellow-500 text-black shadow-yellow-500/50'
+                                        : 'bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-300 hover:to-yellow-400 text-black shadow-yellow-400/50'
                                     : `${isDarkMode ? 'bg-gray-700 text-gray-500' : 'bg-gray-200 text-gray-400'}`
                                     }`}
                             >
@@ -1623,8 +1623,8 @@ export default function Home() {
                 {/* Controls */}
                 <div className="flex justify-center gap-4">
                     {isSearching && (
-                        <div className={`flex items-center gap-3 px-8 py-4 rounded-xl font-semibold ${isDarkMode ? 'bg-gray-800/80 border border-gray-700' : 'bg-white/80 border border-gray-200'} backdrop-blur-sm shadow-lg`}>
-                            <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                        <div className={`flex items-center gap-3 px-8 py-4 rounded-xl font-semibold ${isDarkMode ? 'bg-gray-800/80 border border-gray-700' : 'bg-white/80 border border-yellow-200'} backdrop-blur-sm shadow-lg`}>
+                            <div className={`w-5 h-5 border-2 ${isDarkMode ? 'border-yellow-500' : 'border-yellow-400'} border-t-transparent rounded-full animate-spin`}></div>
                             <span className={isDarkMode ? 'text-gray-200' : 'text-gray-800'}>Searching for stranger...</span>
                         </div>
                     )}
@@ -1648,7 +1648,7 @@ export default function Home() {
                         © 2024 Vamsi Krishna •{' '}
                         <a
                             href="https://github.com/vamsikrishnakosuri/StrangersConnect"
-                            className={`hover:underline transition-all ${isDarkMode ? 'text-blue-400 hover:text-blue-300' : 'text-blue-600 hover:text-blue-700'}`}
+                            className={`hover:underline transition-all ${isDarkMode ? 'text-yellow-400 hover:text-yellow-300' : 'text-yellow-600 hover:text-yellow-700'}`}
                         >
                             Open Source
                         </a>
