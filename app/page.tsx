@@ -118,17 +118,22 @@ export default function Home() {
       
       localStreamRef.current = stream
       
-      // Check if video tracks are enabled
+      // Check if video tracks are enabled and force enable them
       const videoTrack = stream.getVideoTracks()[0]
       if (videoTrack) {
+        // Force enable video track
+        videoTrack.enabled = true
         console.log('Video track enabled:', videoTrack.enabled)
         console.log('Video track readyState:', videoTrack.readyState)
-        setIsVideoEnabled(videoTrack.enabled)
+        console.log('Video track label:', videoTrack.label)
+        setIsVideoEnabled(true)
       }
       
       const audioTrack = stream.getAudioTracks()[0]
       if (audioTrack) {
-        setIsAudioEnabled(audioTrack.enabled)
+        // Force enable audio track
+        audioTrack.enabled = true
+        setIsAudioEnabled(true)
       }
       
       // Set video element source
