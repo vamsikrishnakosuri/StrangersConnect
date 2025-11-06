@@ -822,9 +822,9 @@ export default function Home() {
                             width: '100%',
                             height: '100%',
                             display: 'block', // Always block, never none
-                            // Show video if it has srcObject OR if remoteVideoReady is true
+                            // ALWAYS show when matched - useEffect will force visibility anyway
                             // CRITICAL: Use state (hasRemoteStream) not ref - refs aren't available during render!
-                            opacity: isMatched && (hasRemoteStream || remoteVideoReady) ? '1' : '0.01',
+                            opacity: isMatched ? '1' : '0.01', // Always visible when matched (useEffect enforces this)
                             position: 'absolute',
                             top: 0,
                             left: 0,
