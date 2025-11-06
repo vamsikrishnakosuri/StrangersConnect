@@ -76,18 +76,60 @@ export default function Home() {
   // Get user media (camera/microphone)
   const startLocalStream = async () => {
     try {
+      console.log('Requesting camera/microphone access...')
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: true,
-        audio: true,
+        video: {
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          facingMode: 'user'
+        },
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true
+        },
       })
+      
+      console.log('Got media stream:', stream.id)
+      console.log('Video tracks:', stream.getVideoTracks().length)
+      console.log('Audio tracks:', stream.getAudioTracks().length)
       
       localStreamRef.current = stream
       
+      // Check if video tracks are enabled
+      const videoTrack = stream.getVideoTracks()[0]
+      if (videoTrack) {
+        console.log('Video track enabled:', videoTrack.enabled)
+        console.log('Video track readyState:', videoTrack.readyState)
+        setIsVideoEnabled(videoTrack.enabled)
+      }
+      
+      const audioTrack = stream.getAudioTracks()[0]
+      if (audioTrack) {
+        setIsAudioEnabled(audioTrack.enabled)
+      }
+      
+      // Set video element source
       if (localVideoRef.current) {
+        console.log('Setting local video srcObject...')
         localVideoRef.current.srcObject = stream
-        localVideoRef.current.play().catch((error) => {
-          console.error('Error playing local video:', error)
-        })
+        
+        // Force play
+        try {
+          await localVideoRef.current.play()
+          console.log('Local video playing successfully')
+        } catch (playError) {
+          console.error('Error playing local video:', playError)
+          // Try again after a short delay
+          setTimeout(() => {
+            if (localVideoRef.current) {
+              localVideoRef.current.play().catch((e) => {
+                console.error('Retry play failed:', e)
+              })
+            }
+          }, 100)
+        }
+      } else {
+        console.warn('localVideoRef.current is null!')
       }
 
       // Add tracks to peer connection if it exists
@@ -98,17 +140,18 @@ export default function Home() {
           )
           if (!existingSender) {
             peerConnectionRef.current?.addTrack(track, stream)
+            console.log('Added track to peer connection:', track.kind)
           }
         })
       }
 
-      setIsVideoEnabled(true)
-      setIsAudioEnabled(true)
-      
-      console.log('Local stream started:', stream.getVideoTracks().length, 'video tracks')
+      console.log('Local stream setup complete')
     } catch (error) {
       console.error('Error accessing media devices:', error)
-      alert('Could not access camera/microphone. Please check permissions.')
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      alert('Could not access camera/microphone: ' + errorMessage + '\n\nPlease check your browser permissions.')
+      setIsVideoEnabled(false)
+      setIsAudioEnabled(false)
     }
   }
 
@@ -166,28 +209,45 @@ export default function Home() {
     
     if (mode === 'video' && isMatched && strangerId) {
       try {
-        // Initialize peer connection first
+        console.log('Switching to video mode...')
+        
+        // Start local stream FIRST - this is critical
+        if (!localStreamRef.current) {
+          console.log('Starting local stream...')
+          await startLocalStream()
+        } else {
+          console.log('Local stream already exists')
+          // Make sure video is playing
+          if (localVideoRef.current && localVideoRef.current.srcObject) {
+            localVideoRef.current.play().catch((error) => {
+              console.error('Error playing existing video:', error)
+            })
+          }
+        }
+        
+        // Initialize peer connection
         if (!peerConnectionRef.current) {
+          console.log('Initializing peer connection...')
           initializePeerConnection()
         }
         
-        // Start local stream
-        if (!localStreamRef.current) {
-          await startLocalStream()
-        }
-        
-        // Create offer after everything is ready
-        if (peerConnectionRef.current && socket && strangerId && localStreamRef.current) {
-          // Make sure all tracks are added
+        // Add tracks to peer connection
+        if (peerConnectionRef.current && localStreamRef.current) {
+          console.log('Adding tracks to peer connection...')
           localStreamRef.current.getTracks().forEach((track) => {
             const existingSender = peerConnectionRef.current?.getSenders().find(
               (s) => s.track === track
             )
             if (!existingSender) {
               peerConnectionRef.current?.addTrack(track, localStreamRef.current!)
+              console.log('Added track:', track.kind, track.enabled)
             }
           })
-          
+        }
+        
+        // Create offer after everything is ready
+        if (peerConnectionRef.current && socket && strangerId && localStreamRef.current) {
+          console.log('Creating WebRTC offer...')
           const offer = await peerConnectionRef.current.createOffer({
             offerToReceiveAudio: true,
             offerToReceiveVideo: true,
@@ -199,10 +259,11 @@ export default function Home() {
             strangerId,
             senderId: userId.current,
           })
+          console.log('WebRTC offer sent')
         }
       } catch (error) {
         console.error('Error switching to video mode:', error)
-        alert('Failed to start video. Please check camera/microphone permissions.')
+        alert('Failed to start video: ' + (error instanceof Error ? error.message : 'Unknown error'))
       }
     } else if (mode === 'text' && localStreamRef.current) {
       stopLocalStream()
