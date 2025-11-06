@@ -394,51 +394,53 @@ export default function Home() {
                     </div>
                 </div>
 
-                {/* Video Container */}
-                {isMatched && (
-                    <div
-                        className="mb-4 bg-black rounded-lg overflow-hidden relative cursor-pointer"
-                        style={{ aspectRatio: '16/9' }}
-                        onClick={() => {
-                            // Make entire video area clickable to start playback
-                            if (remoteVideoRef.current && remoteVideoRef.current.paused) {
-                                remoteVideoRef.current.play()
-                                    .then(() => {
-                                        console.log('✅ Video started after click')
-                                        setShowPlayButton(false)
-                                    })
-                                    .catch(e => console.error('Click play failed:', e))
-                            }
+                {/* Video Container - ALWAYS in DOM, just conditionally visible */}
+                <div
+                    className="mb-4 bg-black rounded-lg overflow-hidden relative cursor-pointer"
+                    style={{ 
+                        aspectRatio: '16/9',
+                        display: isMatched ? 'block' : 'none' // Hide container, not video element
+                    }}
+                    onClick={() => {
+                        // Make entire video area clickable to start playback
+                        if (remoteVideoRef.current && remoteVideoRef.current.paused) {
+                            remoteVideoRef.current.play()
+                                .then(() => {
+                                    console.log('✅ Video started after click')
+                                    setShowPlayButton(false)
+                                })
+                                .catch(e => console.error('Click play failed:', e))
+                        }
+                    }}
+                >
+                    {/* Remote Video - ALWAYS in DOM, NEVER unmounted */}
+                    {/* CRITICAL: Element stays in DOM even when not matched */}
+                    <video
+                        ref={remoteVideoRef}
+                        autoPlay
+                        playsInline
+                        muted={false}
+                        className="w-full h-full object-cover bg-black"
+                        style={{
+                            width: '100%',
+                            height: '100%',
+                            display: 'block',
+                            opacity: remoteVideoReady ? '1' : '0.01',
+                            position: 'absolute',
+                            top: 0,
+                            left: 0,
+                            zIndex: 1,
+                            pointerEvents: remoteVideoReady ? 'auto' : 'none'
                         }}
-                    >
-                        {/* Remote Video - ALWAYS rendered, NEVER conditionally removed */}
-                        {/* CRITICAL: Never use visibility:hidden or display:none - prevents MediaStream loading */}
-                        <video
-                            ref={remoteVideoRef}
-                            autoPlay
-                            playsInline
-                            muted={false}
-                            className="w-full h-full object-cover bg-black"
-                            style={{
-                                width: '100%',
-                                height: '100%',
-                                display: 'block',
-                                opacity: remoteVideoReady ? '1' : '0.01', // Use 0.01 instead of 0 to keep element "active"
-                                position: 'absolute',
-                                top: 0,
-                                left: 0,
-                                zIndex: 1,
-                                pointerEvents: remoteVideoReady ? 'auto' : 'none'
-                            }}
-                            onLoadedMetadata={() => {
-                              console.log('🎥 Video metadata loaded in DOM')
-                              setRemoteVideoReady(true)
-                            }}
-                            onCanPlay={() => {
-                              console.log('🎥 Video can play in DOM')
-                              setRemoteVideoReady(true)
-                            }}
-                        />
+                        onLoadedMetadata={() => {
+                            console.log('🎥 Video metadata loaded in DOM')
+                            setRemoteVideoReady(true)
+                        }}
+                        onCanPlay={() => {
+                            console.log('🎥 Video can play in DOM')
+                            setRemoteVideoReady(true)
+                        }}
+                    />
 
                         {/* Play Button - Shown when autoplay is blocked */}
                         {showPlayButton && (
@@ -462,17 +464,18 @@ export default function Home() {
                             </div>
                         )}
 
-                        {/* Placeholder */}
-                        {!remoteVideoReady && (
-                            <div className="absolute inset-0 flex items-center justify-center bg-gray-800 z-10">
-                                <div className="text-center">
-                                    <div className="text-6xl mb-4">👤</div>
-                                    <p>Waiting for stranger's video...</p>
-                                </div>
+                    {/* Placeholder */}
+                    {!remoteVideoReady && isMatched && (
+                        <div className="absolute inset-0 flex items-center justify-center bg-gray-800 z-10">
+                            <div className="text-center">
+                                <div className="text-6xl mb-4">👤</div>
+                                <p>Waiting for stranger's video...</p>
                             </div>
-                        )}
+                        </div>
+                    )}
 
-                        {/* Local Video (PIP) - Always show when matched */}
+                    {/* Local Video (PIP) - Always show when matched */}
+                    {isMatched && (
                         <div className="absolute bottom-4 right-4 w-48 h-36 rounded-lg overflow-hidden border-2 border-white shadow-lg bg-black z-20">
                             <video
                                 ref={localVideoRef}
@@ -483,8 +486,8 @@ export default function Home() {
                                 style={{ transform: 'scaleX(-1)', display: 'block' }}
                             />
                         </div>
-                    </div>
-                )}
+                    )}
+                </div>
 
                 {/* Chat */}
                 {isMatched && (
