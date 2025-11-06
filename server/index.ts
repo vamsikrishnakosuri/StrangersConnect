@@ -74,10 +74,17 @@ io.on('connection', (socket) => {
   })
 
   socket.on('webrtc-ice', (data: { candidate: any; to: string }) => {
-    io.to(users.get(data.to)?.socketId || '').emit('webrtc-ice', {
-      candidate: data.candidate,
-      from: Array.from(users.entries()).find(([_, u]) => u.socketId === socket.id)?.[0]
-    })
+    const fromUserId = Array.from(users.entries()).find(([_, u]) => u.socketId === socket.id)?.[0]
+    const toUser = users.get(data.to)
+    console.log(`Forwarding ICE candidate from ${fromUserId} to ${data.to} (socketId: ${toUser?.socketId})`)
+    if (toUser?.socketId) {
+      io.to(toUser.socketId).emit('webrtc-ice', {
+        candidate: data.candidate,
+        from: fromUserId
+      })
+    } else {
+      console.error(`❌ Cannot forward ICE candidate - user ${data.to} not found`)
+    }
   })
 
   socket.on('send-message', (data: { text: string; to: string }) => {

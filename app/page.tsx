@@ -755,8 +755,21 @@ export default function Home() {
         })
 
         newSocket.on('webrtc-ice', async (data: { candidate: RTCIceCandidateInit }) => {
-            if (peerConnectionRef.current && peerConnectionRef.current.remoteDescription) {
-                await peerConnectionRef.current.addIceCandidate(data.candidate)
+            console.log('🧊 Received ICE candidate from stranger')
+            if (peerConnectionRef.current) {
+                try {
+                    // Allow adding candidates even before remote description is set (they'll be queued)
+                    await peerConnectionRef.current.addIceCandidate(data.candidate)
+                    console.log('✅ Added ICE candidate to peer connection')
+                } catch (error) {
+                    console.error('❌ Error adding ICE candidate:', error)
+                    // If it fails because remoteDescription isn't set, queue it
+                    if (error instanceof Error && error.name === 'InvalidStateError') {
+                        console.warn('⚠️ Remote description not set yet, candidate will be queued by WebRTC')
+                    }
+                }
+            } else {
+                console.error('❌ No peer connection available when ICE candidate received')
             }
         })
 
