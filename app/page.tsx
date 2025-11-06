@@ -399,7 +399,7 @@ export default function Home() {
                     className="mb-4 bg-black rounded-lg overflow-hidden relative cursor-pointer"
                     style={{ 
                         aspectRatio: '16/9',
-                        display: isMatched ? 'block' : 'none' // Hide container, not video element
+                        display: isMatched ? 'block' : 'none'
                     }}
                     onClick={() => {
                         // Make entire video area clickable to start playback
@@ -413,9 +413,10 @@ export default function Home() {
                         }
                     }}
                 >
-                    {/* Remote Video - ALWAYS in DOM, NEVER unmounted */}
-                    {/* CRITICAL: Element stays in DOM even when not matched */}
+                    {/* Remote Video - ALWAYS in DOM, NEVER unmounted, NEVER conditionally rendered */}
+                    {/* CRITICAL: Key prop prevents React reusing, always rendered */}
                     <video
+                        key="remote-video"
                         ref={remoteVideoRef}
                         autoPlay
                         playsInline
@@ -424,13 +425,14 @@ export default function Home() {
                         style={{
                             width: '100%',
                             height: '100%',
-                            display: 'block',
+                            display: 'block', // Always block, never none
                             opacity: remoteVideoReady ? '1' : '0.01',
                             position: 'absolute',
                             top: 0,
                             left: 0,
                             zIndex: 1,
-                            pointerEvents: remoteVideoReady ? 'auto' : 'none'
+                            pointerEvents: remoteVideoReady ? 'auto' : 'none',
+                            visibility: 'visible' // Always visible, never hidden
                         }}
                         onLoadedMetadata={() => {
                             console.log('🎥 Video metadata loaded in DOM')
