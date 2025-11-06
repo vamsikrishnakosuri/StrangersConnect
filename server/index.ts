@@ -92,11 +92,20 @@ io.on('connection', (socket) => {
     const sender = users.get(data.senderId)
     const stranger = users.get(data.strangerId)
     
+    console.log(`WebRTC offer from ${data.senderId} to ${data.strangerId}`)
+    console.log('Sender exists:', !!sender, 'Stranger exists:', !!stranger)
+    if (sender) console.log('Sender matched with:', sender.matchedWith)
+    if (stranger) console.log('Stranger matched with:', stranger.matchedWith)
+    
     if (sender && stranger && sender.matchedWith === data.strangerId) {
+      console.log(`Forwarding offer to stranger socket: ${stranger.socketId}`)
       io.to(stranger.socketId).emit('webrtc-offer', {
         offer: data.offer,
         senderId: data.senderId,
       })
+      console.log('Offer forwarded successfully')
+    } else {
+      console.warn('Offer not forwarded - validation failed')
     }
   })
 
@@ -104,11 +113,18 @@ io.on('connection', (socket) => {
     const sender = users.get(data.senderId)
     const stranger = users.get(data.strangerId)
     
+    console.log(`WebRTC answer from ${data.senderId} to ${data.strangerId}`)
+    console.log('Sender exists:', !!sender, 'Stranger exists:', !!stranger)
+    
     if (sender && stranger && sender.matchedWith === data.strangerId) {
+      console.log(`Forwarding answer to stranger socket: ${stranger.socketId}`)
       io.to(stranger.socketId).emit('webrtc-answer', {
         answer: data.answer,
         senderId: data.senderId,
       })
+      console.log('Answer forwarded successfully')
+    } else {
+      console.warn('Answer not forwarded - validation failed')
     }
   })
 
