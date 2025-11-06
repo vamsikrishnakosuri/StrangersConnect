@@ -45,17 +45,23 @@ export default function Home() {
       console.log('📥 Received remote track:', event.track.kind)
       if (remoteVideoRef.current && event.streams[0]) {
         console.log('Setting remote stream')
-        remoteVideoRef.current.srcObject = event.streams[0]
-        setRemoteVideoReady(true)
         
-        // Play after a short delay to avoid interruption
-        setTimeout(() => {
-          if (remoteVideoRef.current) {
-            remoteVideoRef.current.play()
-              .then(() => console.log('✅ Remote video playing!'))
-              .catch((e) => console.error('Remote play error:', e))
+        // Only set stream once (on first track)
+        if (!remoteVideoRef.current.srcObject) {
+          remoteVideoRef.current.srcObject = event.streams[0]
+          
+          // Wait for video to be ready, then play
+          remoteVideoRef.current.onloadedmetadata = () => {
+            if (remoteVideoRef.current) {
+              remoteVideoRef.current.play()
+                .then(() => {
+                  console.log('✅ Remote video playing!')
+                  setRemoteVideoReady(true)
+                })
+                .catch((e) => console.error('Remote play error:', e))
+            }
           }
-        }, 100)
+        }
       }
     }
 
@@ -262,13 +268,12 @@ export default function Home() {
                 {/* Video Container */}
                 {isMatched && (
                     <div className="mb-4 bg-black rounded-lg overflow-hidden relative" style={{ aspectRatio: '16/9' }}>
-            {/* Remote Video */}
+            {/* Remote Video - Always rendered, never removed */}
             <video
               ref={remoteVideoRef}
               playsInline
               muted={false}
               className="w-full h-full object-cover bg-black"
-              style={{ display: remoteVideoReady ? 'block' : 'none' }}
             />
 
                         {/* Placeholder */}
