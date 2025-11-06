@@ -30,6 +30,7 @@ export default function Home() {
     const messagesEndRef = useRef<HTMLDivElement>(null)
     const pendingIceCandidatesRef = useRef<RTCIceCandidate[]>([]) // Queue ICE candidates until strangerId is ready
     const socketRef = useRef<Socket | null>(null) // Ref to access current socket in ICE candidate handler
+    const strangerIdRef = useRef<string | null>(null) // Ref to access current strangerId in ICE candidate handler
 
     // Auto-scroll messages
     useEffect(() => {
@@ -486,9 +487,9 @@ export default function Home() {
                 })
 
                 // Send ICE candidate if socket and strangerId are available
-                // Use refs to get current values (socket might change)
-                const socketToUse = socketRef.current || currentSocket
-                const strangerIdToUse = currentStrangerId  // Use parameter from createPeerConnection
+                // ALWAYS use refs to get current values (they're updated when match happens)
+                const socketToUse = socketRef.current
+                const strangerIdToUse = strangerIdRef.current
                 
                 if (socketToUse && strangerIdToUse) {
                     socketToUse.emit('webrtc-ice', {
@@ -608,6 +609,7 @@ export default function Home() {
             setIsSearching(false)
             setIsMatched(true)
             setStrangerId(data.strangerId)
+            strangerIdRef.current = data.strangerId // Update ref immediately
             setMessages([{ id: uuidv4(), text: '🎥 Starting video...', sender: 'stranger' }])
 
             // ALWAYS start video for BOTH users - no matter who creates offer
