@@ -52,23 +52,24 @@ export default function Home() {
                     remoteVideoRef.current.srcObject = event.streams[0]
                     setRemoteVideoReady(true)
 
-                    // Force play - multiple attempts for reliability
-                    const tryPlay = async (attempt = 1) => {
-                        if (!remoteVideoRef.current) return
-
-                        try {
-                            await remoteVideoRef.current.play()
-                            console.log('✅ Remote video playing!')
-                        } catch (error) {
-                            console.warn(`Play attempt ${attempt} failed:`, error)
-                            if (attempt < 3) {
-                                setTimeout(() => tryPlay(attempt + 1), 300 * attempt)
+                    // Force play - immediate and explicit
+                    remoteVideoRef.current.play().catch(e => {
+                        console.error('Play error:', e)
+                        // Retry once after delay
+                        setTimeout(() => {
+                            if (remoteVideoRef.current) {
+                                remoteVideoRef.current.play().catch(e2 => console.error('Retry play error:', e2))
                             }
-                        }
-                    }
+                        }, 500)
+                    })
 
-                    // Start playing after a short delay
-                    setTimeout(() => tryPlay(), 200)
+                    // Make sure it's visible - FORCE IT
+                    if (remoteVideoRef.current) {
+                        remoteVideoRef.current.style.display = 'block'
+                        remoteVideoRef.current.style.opacity = '1'
+                        remoteVideoRef.current.style.visibility = 'visible'
+                        console.log('✅ Forced video visibility')
+                    }
                 }
             }
         }
@@ -86,70 +87,70 @@ export default function Home() {
         return pc
     }
 
-  // Start local video - ONLY CALLED ONCE
-  const startVideo = async () => {
-    // Don't start again if already started
-    if (localStreamRef.current && peerConnectionRef.current) {
-      console.log('⚠️ Video already started, skipping')
-      return peerConnectionRef.current
-    }
-
-    try {
-      console.log('📷 Requesting camera access...')
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { 
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-          facingMode: 'user'
-        },
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true
-        },
-      })
-      console.log('✅ Got camera access')
-      console.log('📹 Video tracks:', stream.getVideoTracks().length)
-      console.log('🎤 Audio tracks:', stream.getAudioTracks().length)
-
-      localStreamRef.current = stream
-      
-      // Ensure local video is visible
-      if (localVideoRef.current) {
-        localVideoRef.current.srcObject = stream
-        localVideoRef.current.playsInline = true
-        localVideoRef.current.autoplay = true
-        localVideoRef.current.muted = true
-        
-        try {
-          await localVideoRef.current.play()
-          console.log('✅ Local video playing')
-        } catch (e) {
-          console.error('Local video play error:', e)
+    // Start local video - ONLY CALLED ONCE
+    const startVideo = async () => {
+        // Don't start again if already started
+        if (localStreamRef.current && peerConnectionRef.current) {
+            console.log('⚠️ Video already started, skipping')
+            return peerConnectionRef.current
         }
-      }
 
-      // Create peer connection
-      const pc = createPeerConnection()
-      
-      // Add all tracks - CRITICAL for sending video
-      stream.getTracks().forEach((track) => {
-        const sender = pc.addTrack(track, stream)
-        console.log('➕ Added track:', track.kind, '- Enabled:', track.enabled, '- ReadyState:', track.readyState)
-        
-        // Monitor track state
-        track.onended = () => console.warn('⚠️ Track ended:', track.kind)
-        track.onmute = () => console.warn('⚠️ Track muted:', track.kind)
-        track.onunmute = () => console.log('✅ Track unmuted:', track.kind)
-      })
+        try {
+            console.log('📷 Requesting camera access...')
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: {
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 },
+                    facingMode: 'user'
+                },
+                audio: {
+                    echoCancellation: true,
+                    noiseSuppression: true
+                },
+            })
+            console.log('✅ Got camera access')
+            console.log('📹 Video tracks:', stream.getVideoTracks().length)
+            console.log('🎤 Audio tracks:', stream.getAudioTracks().length)
 
-      console.log('📊 Peer connection senders:', pc.getSenders().length)
-      
-      return pc
-    } catch (error) {
-      console.error('❌ Error starting video:', error)
-      alert('Could not access camera/microphone: ' + (error instanceof Error ? error.message : 'Unknown'))
+            localStreamRef.current = stream
+
+            // Ensure local video is visible
+            if (localVideoRef.current) {
+                localVideoRef.current.srcObject = stream
+                localVideoRef.current.playsInline = true
+                localVideoRef.current.autoplay = true
+                localVideoRef.current.muted = true
+
+                try {
+                    await localVideoRef.current.play()
+                    console.log('✅ Local video playing')
+                } catch (e) {
+                    console.error('Local video play error:', e)
+                }
+            }
+
+            // Create peer connection
+            const pc = createPeerConnection()
+
+            // Add all tracks - CRITICAL for sending video
+            stream.getTracks().forEach((track) => {
+                const sender = pc.addTrack(track, stream)
+                console.log('➕ Added track:', track.kind, '- Enabled:', track.enabled, '- ReadyState:', track.readyState)
+
+                // Monitor track state
+                track.onended = () => console.warn('⚠️ Track ended:', track.kind)
+                track.onmute = () => console.warn('⚠️ Track muted:', track.kind)
+                track.onunmute = () => console.log('✅ Track unmuted:', track.kind)
+            })
+
+            console.log('📊 Peer connection senders:', pc.getSenders().length)
+
+            return pc
+        } catch (error) {
+            console.error('❌ Error starting video:', error)
+            alert('Could not access camera/microphone: ' + (error instanceof Error ? error.message : 'Unknown'))
+        }
     }
-  }
 
     // Stop video
     const stopVideo = () => {
@@ -177,76 +178,76 @@ export default function Home() {
             stopVideo()
         })
 
-    newSocket.on('matched', async (data: { strangerId: string }) => {
-      console.log('✅ Matched with:', data.strangerId)
-      setIsSearching(false)
-      setIsMatched(true)
-      setStrangerId(data.strangerId)
-      setMessages([{ id: uuidv4(), text: '🎥 Starting video...', sender: 'stranger' }])
+        newSocket.on('matched', async (data: { strangerId: string }) => {
+            console.log('✅ Matched with:', data.strangerId)
+            setIsSearching(false)
+            setIsMatched(true)
+            setStrangerId(data.strangerId)
+            setMessages([{ id: uuidv4(), text: '🎥 Starting video...', sender: 'stranger' }])
 
-      // ALWAYS start video for BOTH users - no matter who creates offer
-      console.log('🎥 Starting camera...')
-      const pc = await startVideo()
-      
-      if (!pc) {
-        console.error('❌ Failed to start video')
-        return
-      }
-      
-      console.log('✅ Camera ready, peer connection:', !!pc)
-      
-      // Wait a moment to ensure peer connection is fully set up
-      await new Promise(resolve => setTimeout(resolve, 300))
-      
-      // Only the user with smaller ID creates the offer (prevents glare)
-      const shouldCreateOffer = userId.current < data.strangerId
-      console.log('Should I create offer?', shouldCreateOffer, '(me:', userId.current, 'vs', data.strangerId, ')')
-      
-      if (shouldCreateOffer && peerConnectionRef.current) {
-        try {
-          const offer = await peerConnectionRef.current.createOffer()
-          await peerConnectionRef.current.setLocalDescription(offer)
-          newSocket.emit('webrtc-offer', { offer, to: data.strangerId })
-          console.log('📤 Sent offer to:', data.strangerId)
-        } catch (error) {
-          console.error('❌ Error creating offer:', error)
-        }
-      } else {
-        console.log('⏳ Waiting for offer from stranger')
-      }
-    })
+            // ALWAYS start video for BOTH users - no matter who creates offer
+            console.log('🎥 Starting camera...')
+            const pc = await startVideo()
 
-    newSocket.on('webrtc-offer', async (data: { offer: RTCSessionDescriptionInit; from: string }) => {
-      console.log('📨 Received offer from:', data.from)
-      
-      // Wait for peer connection - camera might still be starting
-      let retries = 0
-      while (!peerConnectionRef.current && retries < 50) {
-        await new Promise(resolve => setTimeout(resolve, 100))
-        retries++
-        if (retries % 10 === 0) {
-          console.log(`⏳ Waiting for peer connection... (${retries * 100}ms)`)
-        }
-      }
-      
-      if (peerConnectionRef.current) {
-        try {
-          await peerConnectionRef.current.setRemoteDescription(data.offer)
-          console.log('✅ Set remote description')
-          
-          const answer = await peerConnectionRef.current.createAnswer()
-          await peerConnectionRef.current.setLocalDescription(answer)
-          console.log('✅ Created and set local answer')
-          
-          newSocket.emit('webrtc-answer', { answer, to: data.from })
-          console.log('📤 Sent answer to:', data.from)
-        } catch (error) {
-          console.error('❌ Error handling offer:', error)
-        }
-      } else {
-        console.error('❌ Peer connection not ready after 5 seconds - camera may have failed')
-      }
-    })
+            if (!pc) {
+                console.error('❌ Failed to start video')
+                return
+            }
+
+            console.log('✅ Camera ready, peer connection:', !!pc)
+
+            // Wait a moment to ensure peer connection is fully set up
+            await new Promise(resolve => setTimeout(resolve, 300))
+
+            // Only the user with smaller ID creates the offer (prevents glare)
+            const shouldCreateOffer = userId.current < data.strangerId
+            console.log('Should I create offer?', shouldCreateOffer, '(me:', userId.current, 'vs', data.strangerId, ')')
+
+            if (shouldCreateOffer && peerConnectionRef.current) {
+                try {
+                    const offer = await peerConnectionRef.current.createOffer()
+                    await peerConnectionRef.current.setLocalDescription(offer)
+                    newSocket.emit('webrtc-offer', { offer, to: data.strangerId })
+                    console.log('📤 Sent offer to:', data.strangerId)
+                } catch (error) {
+                    console.error('❌ Error creating offer:', error)
+                }
+            } else {
+                console.log('⏳ Waiting for offer from stranger')
+            }
+        })
+
+        newSocket.on('webrtc-offer', async (data: { offer: RTCSessionDescriptionInit; from: string }) => {
+            console.log('📨 Received offer from:', data.from)
+
+            // Wait for peer connection - camera might still be starting
+            let retries = 0
+            while (!peerConnectionRef.current && retries < 50) {
+                await new Promise(resolve => setTimeout(resolve, 100))
+                retries++
+                if (retries % 10 === 0) {
+                    console.log(`⏳ Waiting for peer connection... (${retries * 100}ms)`)
+                }
+            }
+
+            if (peerConnectionRef.current) {
+                try {
+                    await peerConnectionRef.current.setRemoteDescription(data.offer)
+                    console.log('✅ Set remote description')
+
+                    const answer = await peerConnectionRef.current.createAnswer()
+                    await peerConnectionRef.current.setLocalDescription(answer)
+                    console.log('✅ Created and set local answer')
+
+                    newSocket.emit('webrtc-answer', { answer, to: data.from })
+                    console.log('📤 Sent answer to:', data.from)
+                } catch (error) {
+                    console.error('❌ Error handling offer:', error)
+                }
+            } else {
+                console.error('❌ Peer connection not ready after 5 seconds - camera may have failed')
+            }
+        })
 
         newSocket.on('webrtc-answer', async (data: { answer: RTCSessionDescriptionInit }) => {
             console.log('📨 Received answer')
@@ -322,15 +323,21 @@ export default function Home() {
                 {/* Video Container */}
                 {isMatched && (
                     <div className="mb-4 bg-black rounded-lg overflow-hidden relative" style={{ aspectRatio: '16/9' }}>
-                        {/* Remote Video - Always rendered, never removed */}
-                        <video
-                            ref={remoteVideoRef}
-                            autoPlay
-                            playsInline
-                            muted={false}
-                            className="w-full h-full object-cover bg-black"
-                            style={{ visibility: remoteVideoReady ? 'visible' : 'hidden' }}
-                        />
+            {/* Remote Video - Always rendered, never removed */}
+            <video
+              ref={remoteVideoRef}
+              autoPlay
+              playsInline
+              muted={false}
+              className="w-full h-full object-cover bg-black"
+              style={{ 
+                width: '100%', 
+                height: '100%',
+                display: 'block',
+                opacity: remoteVideoReady ? '1' : '0',
+                visibility: remoteVideoReady ? 'visible' : 'hidden'
+              }}
+            />
 
                         {/* Placeholder */}
                         {!remoteVideoReady && (
