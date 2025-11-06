@@ -92,7 +92,8 @@ export default function Home() {
         combined.set(new Uint8Array(encryptedData), iv.length)
         
         // Convert to base64 for transmission
-        return btoa(String.fromCharCode(...combined))
+        const binaryString = Array.from(combined, byte => String.fromCharCode(byte)).join('')
+        return btoa(binaryString)
     }
 
     const decryptMessage = async (encryptedText: string, key: CryptoKey): Promise<string> => {
