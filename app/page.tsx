@@ -1132,10 +1132,8 @@ export default function Home() {
                 {/* Video Container - ALWAYS in DOM, never display:none (breaks MediaStream loading) */}
                 {/* Mobile: Portrait (9/16), Desktop: Landscape (16/9) */}
                 <div
-                    className={`mb-6 rounded-2xl relative cursor-pointer shadow-2xl overflow-hidden transition-all duration-300 ${isDarkMode ? 'bg-black border border-gray-800' : 'bg-black border border-gray-200'}`}
+                    className={`video-container mb-6 rounded-2xl relative cursor-pointer shadow-2xl overflow-hidden transition-all duration-300 ${isDarkMode ? 'bg-black border border-gray-800' : 'bg-black border border-gray-200'}`}
                     style={{
-                        // Mobile: Portrait aspect ratio (like WhatsApp), Desktop: Landscape
-                        aspectRatio: 'var(--video-aspect-ratio, 16/9)',
                         display: 'block', // Always block - never none (MediaStreams need visible parent)
                         opacity: isMatched ? '1' : '0', // Hide visually but keep in DOM
                         pointerEvents: isMatched ? 'auto' : 'none',
@@ -1342,8 +1340,8 @@ export default function Home() {
                                     }
                                 }}
                                 className={`px-8 py-4 rounded-xl font-semibold text-lg transition-all duration-200 shadow-2xl hover:shadow-3xl transform hover:scale-105 active:scale-95 ${isDarkMode
-                                        ? 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white'
-                                        : 'bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-400 hover:to-purple-400 text-white'
+                                    ? 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white'
+                                    : 'bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-400 hover:to-purple-400 text-white'
                                     }`}
                             >
                                 ▶️ Click to See Stranger
@@ -1558,10 +1556,10 @@ export default function Home() {
                                 onClick={findStranger}
                                 disabled={!isConnected}
                                 className={`px-8 py-4 rounded-xl font-semibold text-lg transition-all duration-200 shadow-xl hover:shadow-2xl transform hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${isConnected
-                                        ? isDarkMode
-                                            ? 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white'
-                                            : 'bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-400 hover:to-purple-400 text-white'
-                                        : `${isDarkMode ? 'bg-gray-700 text-gray-500' : 'bg-gray-200 text-gray-400'}`
+                                    ? isDarkMode
+                                        ? 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white'
+                                        : 'bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-400 hover:to-purple-400 text-white'
+                                    : `${isDarkMode ? 'bg-gray-700 text-gray-500' : 'bg-gray-200 text-gray-400'}`
                                     }`}
                             >
                                 {isConnected ? '🎯 Find Stranger' : 'Connecting...'}
@@ -1602,8 +1600,8 @@ export default function Home() {
                         <button
                             onClick={disconnect}
                             className={`px-8 py-4 rounded-xl font-semibold transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-105 active:scale-95 ${isDarkMode
-                                    ? 'bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white'
-                                    : 'bg-gradient-to-r from-red-500 to-red-600 hover:from-red-400 hover:to-red-500 text-white'
+                                ? 'bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white'
+                                : 'bg-gradient-to-r from-red-500 to-red-600 hover:from-red-400 hover:to-red-500 text-white'
                                 }`}
                         >
                             Disconnect
@@ -1615,8 +1613,8 @@ export default function Home() {
                 <div className={`mt-12 text-center ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>
                     <p className="text-sm">
                         © 2024 Vamsi Krishna •{' '}
-                        <a 
-                            href="https://github.com/vamsikrishnakosuri/StrangersConnect" 
+                        <a
+                            href="https://github.com/vamsikrishnakosuri/StrangersConnect"
                             className={`hover:underline transition-all ${isDarkMode ? 'text-blue-400 hover:text-blue-300' : 'text-blue-600 hover:text-blue-700'}`}
                         >
                             Open Source

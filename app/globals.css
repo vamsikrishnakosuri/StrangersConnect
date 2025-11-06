@@ -2,14 +2,14 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  /* Mobile: Portrait (like WhatsApp), Desktop: Landscape */
-  --video-aspect-ratio: 9/16; /* Portrait for mobile */
+/* Video aspect ratio - Mobile: Portrait (like WhatsApp), Desktop: Landscape */
+.video-container {
+  aspect-ratio: 9/16; /* Portrait for mobile */
 }
 
 @media (min-width: 768px) {
-  :root {
-    --video-aspect-ratio: 16/9; /* Landscape for desktop */
+  .video-container {
+    aspect-ratio: 16/9; /* Landscape for desktop */
   }
 }
 
