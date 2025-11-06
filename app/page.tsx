@@ -62,90 +62,82 @@ export default function Home() {
                     return
                 }
 
-        // Set stream (only once)
-        if (!remoteVideoRef.current.srcObject) {
-          console.log('Setting srcObject for the first time...')
-          remoteVideoRef.current.srcObject = event.streams[0]
-          
-          // CRITICAL: Multiple ways to detect when video is ready
-          // For MediaStreams, onloadedmetadata might not fire, so we use oncanplay
-          const tryPlayVideo = () => {
-            if (!remoteVideoRef.current) {
-              console.error('❌ Video ref is null in tryPlayVideo')
-              return
-            }
-            
-            console.log('Attempting to play video...')
-            console.log('Current readyState:', remoteVideoRef.current.readyState)
-            console.log('Current dimensions:', remoteVideoRef.current.videoWidth, 'x', remoteVideoRef.current.videoHeight)
-            
-            remoteVideoRef.current.play()
-              .then(() => {
-                console.log('✅✅✅ REMOTE VIDEO PLAYING! ✅✅✅')
-                setRemoteVideoReady(true)
-                setShowPlayButton(false)
-              })
-              .catch((error) => {
-                console.error('❌ Play failed:', error)
-                const errorObj = error as Error
-                if (errorObj.name === 'NotAllowedError') {
-                  console.warn('⚠️ Autoplay blocked - showing play button')
-                  setShowPlayButton(true)
-                } else {
-                  // Retry after short delay
-                  setTimeout(() => tryPlayVideo(), 500)
-                }
-              })
-          }
-          
-          // Method 1: onloadedmetadata (for some browsers)
-          remoteVideoRef.current.onloadedmetadata = () => {
-            console.log('✅✅✅ METADATA LOADED (onloadedmetadata) ✅✅✅')
-            tryPlayVideo()
-          }
-          
-          // Method 2: oncanplay (more reliable for MediaStreams)
-          remoteVideoRef.current.oncanplay = () => {
-            console.log('✅✅✅ CAN PLAY (oncanplay) ✅✅✅')
-            tryPlayVideo()
-          }
-          
-          // Method 3: onloadeddata (another fallback)
-          remoteVideoRef.current.onloadeddata = () => {
-            console.log('✅✅✅ DATA LOADED (onloadeddata) ✅✅✅')
-            tryPlayVideo()
-          }
-          
-          // Method 4: Check readyState after delay (fallback)
-          setTimeout(() => {
-            if (remoteVideoRef.current && remoteVideoRef.current.readyState >= 2) {
-              console.log('✅✅✅ READY STATE >= 2 (fallback) ✅✅✅')
-              tryPlayVideo()
-            } else {
-              console.warn('⚠️ Video not ready after 1 second, readyState:', remoteVideoRef.current?.readyState)
-              // Still try to play - might work
-              if (remoteVideoRef.current) {
-                tryPlayVideo()
-              }
-            }
-          }, 1000)
+                // Set stream (only once)
+                if (!remoteVideoRef.current.srcObject) {
+                    console.log('Setting srcObject for the first time...')
 
-                    // Also check current state
+                    // CRITICAL: Make video visible FIRST before setting srcObject
+                    // Hidden elements can't load MediaStreams properly
+                    if (remoteVideoRef.current) {
+                        remoteVideoRef.current.style.display = 'block'
+                        remoteVideoRef.current.style.opacity = '1'
+                        remoteVideoRef.current.style.visibility = 'visible'
+                        console.log('✅ Made video visible BEFORE setting stream')
+                    }
+
+                    // NOW set the stream
+                    remoteVideoRef.current.srcObject = event.streams[0]
+                    setRemoteVideoReady(true) // Set immediately so video is visible
+
+                    // Try to play IMMEDIATELY - don't wait for events
+                    const tryPlayVideo = (attempt = 1) => {
+                        if (!remoteVideoRef.current) {
+                            console.error('❌ Video ref is null')
+                            return
+                        }
+
+                        console.log(`🎬 Play attempt ${attempt}, readyState:`, remoteVideoRef.current.readyState)
+
+                        // Try play
+                        remoteVideoRef.current.play()
+                            .then(() => {
+                                console.log('✅✅✅ REMOTE VIDEO PLAYING! ✅✅✅')
+                                console.log('Video dimensions:', remoteVideoRef.current?.videoWidth, 'x', remoteVideoRef.current?.videoHeight)
+                                setShowPlayButton(false)
+                            })
+                            .catch((error) => {
+                                console.error(`❌ Play attempt ${attempt} failed:`, error)
+                                const errorObj = error as Error
+                                const errorName = errorObj.name || 'Unknown'
+
+                                if (errorName === 'NotAllowedError') {
+                                    console.warn('⚠️ Autoplay blocked - showing play button')
+                                    setShowPlayButton(true)
+                                } else if (attempt < 5) {
+                                    // Retry - MediaStream might need time
+                                    setTimeout(() => tryPlayVideo(attempt + 1), 300 * attempt)
+                                }
+                            })
+                    }
+
+                    // Try play immediately
+                    setTimeout(() => tryPlayVideo(), 100)
+
+                    // Also set up event handlers as backup
+                    remoteVideoRef.current.oncanplay = () => {
+                        console.log('✅✅✅ CAN PLAY event fired! ✅✅✅')
+                        if (remoteVideoRef.current && remoteVideoRef.current.paused) {
+                            tryPlayVideo(999) // Mark as event-driven
+                        }
+                    }
+
+                    remoteVideoRef.current.onloadedmetadata = () => {
+                        console.log('✅✅✅ METADATA LOADED event fired! ✅✅✅')
+                        if (remoteVideoRef.current && remoteVideoRef.current.paused) {
+                            tryPlayVideo(999) // Mark as event-driven
+                        }
+                    }
+
+                    // Log current state
                     console.log('✅ srcObject set, checking:', {
                         hasSrcObject: !!remoteVideoRef.current.srcObject,
                         videoWidth: remoteVideoRef.current.videoWidth,
                         videoHeight: remoteVideoRef.current.videoHeight,
                         readyState: remoteVideoRef.current.readyState,
-                        paused: remoteVideoRef.current.paused
+                        paused: remoteVideoRef.current.paused,
+                        display: window.getComputedStyle(remoteVideoRef.current).display,
+                        visibility: window.getComputedStyle(remoteVideoRef.current).visibility
                     })
-
-                    // Make sure it's visible
-                    if (remoteVideoRef.current) {
-                        remoteVideoRef.current.style.display = 'block'
-                        remoteVideoRef.current.style.opacity = '1'
-                        remoteVideoRef.current.style.visibility = 'visible'
-                        console.log('✅ Forced video visibility')
-                    }
                 } else {
                     console.log('⚠️ srcObject already set, checking if it changed...')
                     if (remoteVideoRef.current.srcObject !== event.streams[0]) {
@@ -420,6 +412,7 @@ export default function Home() {
                         }}
                     >
                         {/* Remote Video - ALWAYS rendered, NEVER conditionally removed */}
+                        {/* CRITICAL: Never use visibility:hidden or display:none - prevents MediaStream loading */}
                         <video
                             ref={remoteVideoRef}
                             autoPlay
@@ -430,18 +423,20 @@ export default function Home() {
                                 width: '100%',
                                 height: '100%',
                                 display: 'block',
-                                opacity: remoteVideoReady ? '1' : '0',
-                                visibility: remoteVideoReady ? 'visible' : 'hidden',
+                                opacity: remoteVideoReady ? '1' : '0.01', // Use 0.01 instead of 0 to keep element "active"
                                 position: 'absolute',
                                 top: 0,
                                 left: 0,
-                                zIndex: 1
+                                zIndex: 1,
+                                pointerEvents: remoteVideoReady ? 'auto' : 'none'
                             }}
                             onLoadedMetadata={() => {
-                                console.log('🎥 Video metadata loaded in DOM')
+                              console.log('🎥 Video metadata loaded in DOM')
+                              setRemoteVideoReady(true)
                             }}
                             onCanPlay={() => {
-                                console.log('🎥 Video can play')
+                              console.log('🎥 Video can play in DOM')
+                              setRemoteVideoReady(true)
                             }}
                         />
 
