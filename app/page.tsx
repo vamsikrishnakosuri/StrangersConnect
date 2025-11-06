@@ -1100,7 +1100,7 @@ export default function Home() {
                             <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Connect • Chat • Video</p>
                         </div>
                     </div>
-                    
+
                     <div className="flex items-center gap-4">
                         {/* Connection Status */}
                         <div className={`flex items-center gap-2 px-4 py-2 rounded-full ${isDarkMode ? 'bg-gray-800' : 'bg-gray-100'} ${isDarkMode ? 'border border-gray-700' : 'border border-gray-200'}`}>
@@ -1109,7 +1109,7 @@ export default function Home() {
                                 {isConnected ? 'Online' : 'Offline'}
                             </span>
                         </div>
-                        
+
                         {/* Dark Mode Toggle */}
                         <button
                             onClick={() => setIsDarkMode(!isDarkMode)}
@@ -1130,10 +1130,12 @@ export default function Home() {
                 </div>
 
                 {/* Video Container - ALWAYS in DOM, never display:none (breaks MediaStream loading) */}
+                {/* Mobile: Portrait (9/16), Desktop: Landscape (16/9) */}
                 <div
                     className={`mb-6 rounded-2xl relative cursor-pointer shadow-2xl overflow-hidden transition-all duration-300 ${isDarkMode ? 'bg-black border border-gray-800' : 'bg-black border border-gray-200'}`}
                     style={{
-                        aspectRatio: '16/9',
+                        // Mobile: Portrait aspect ratio (like WhatsApp), Desktop: Landscape
+                        aspectRatio: 'var(--video-aspect-ratio, 16/9)',
                         display: 'block', // Always block - never none (MediaStreams need visible parent)
                         opacity: isMatched ? '1' : '0', // Hide visually but keep in DOM
                         pointerEvents: isMatched ? 'auto' : 'none',
@@ -1141,6 +1143,7 @@ export default function Home() {
                         overflow: 'hidden', // Keep overflow hidden but ensure video fills container
                         position: 'relative' // Establish positioning context
                     }}
+                >
                     onClick={() => {
                         // Make entire video area clickable to start playback
                         if (remoteVideoRef.current && remoteVideoRef.current.paused) {
@@ -1339,11 +1342,10 @@ export default function Home() {
                                             .catch(err => console.error('Button play failed:', err))
                                     }
                                 }}
-                                className={`px-8 py-4 rounded-xl font-semibold text-lg transition-all duration-200 shadow-2xl hover:shadow-3xl transform hover:scale-105 active:scale-95 ${
-                                    isDarkMode 
-                                        ? 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white' 
+                                className={`px-8 py-4 rounded-xl font-semibold text-lg transition-all duration-200 shadow-2xl hover:shadow-3xl transform hover:scale-105 active:scale-95 ${isDarkMode
+                                        ? 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white'
                                         : 'bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-400 hover:to-purple-400 text-white'
-                                }`}
+                                    }`}
                             >
                                 ▶️ Click to See Stranger
                             </button>
@@ -1556,18 +1558,17 @@ export default function Home() {
                             <button
                                 onClick={findStranger}
                                 disabled={!isConnected}
-                                className={`px-8 py-4 rounded-xl font-semibold text-lg transition-all duration-200 shadow-xl hover:shadow-2xl transform hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${
-                                    isConnected
-                                        ? isDarkMode 
-                                            ? 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white' 
+                                className={`px-8 py-4 rounded-xl font-semibold text-lg transition-all duration-200 shadow-xl hover:shadow-2xl transform hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${isConnected
+                                        ? isDarkMode
+                                            ? 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white'
                                             : 'bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-400 hover:to-purple-400 text-white'
                                         : `${isDarkMode ? 'bg-gray-700 text-gray-500' : 'bg-gray-200 text-gray-400'}`
-                                }`}
+                                    }`}
                             >
                                 {isConnected ? '🎯 Find Stranger' : 'Connecting...'}
                             </button>
                         </div>
-                        
+
                         {/* Features Grid */}
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mt-12 max-w-4xl mx-auto">
                             <div className={`p-6 rounded-2xl ${isDarkMode ? 'bg-gray-800/50 border border-gray-700' : 'bg-white/50 border border-gray-200'} backdrop-blur-sm transition-all duration-200 hover:scale-105`}>
@@ -1599,13 +1600,12 @@ export default function Home() {
                     )}
 
                     {isMatched && (
-                        <button 
-                            onClick={disconnect} 
-                            className={`px-8 py-4 rounded-xl font-semibold transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-105 active:scale-95 ${
-                                isDarkMode 
-                                    ? 'bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white' 
+                        <button
+                            onClick={disconnect}
+                            className={`px-8 py-4 rounded-xl font-semibold transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-105 active:scale-95 ${isDarkMode
+                                    ? 'bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white'
                                     : 'bg-gradient-to-r from-red-500 to-red-600 hover:from-red-400 hover:to-red-500 text-white'
-                            }`}
+                                }`}
                         >
                             Disconnect
                         </button>
@@ -1615,7 +1615,7 @@ export default function Home() {
                 {/* Footer */}
                 <div className={`mt-12 text-center ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>
                     <p className="text-sm">
-                        Made with <span className="text-red-500">❤️</span> •{' '}
+                        © 2024 Vamsi Krishna •{' '}
                         <a 
                             href="https://github.com/vamsikrishnakosuri/StrangersConnect" 
                             className={`hover:underline transition-all ${isDarkMode ? 'text-blue-400 hover:text-blue-300' : 'text-blue-600 hover:text-blue-700'}`}
