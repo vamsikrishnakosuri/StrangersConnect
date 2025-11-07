@@ -1229,20 +1229,28 @@ export default function Home() {
                 {/* Modern Header with Dark Mode Toggle */}
                 <div className="flex items-center justify-between mb-8">
                     <div className="flex items-center gap-4">
-                        {/* Logo */}
-                        <img
-                            src="/logo.png"
-                            alt="Strangers Connect Logo"
-                            className="h-12 w-auto object-contain"
-                            onError={(e) => {
-                                // Hide logo if file not found - no fallback emoji
-                                const target = e.target as HTMLImageElement
-                                target.style.display = 'none'
-                            }}
-                        />
+                        {/* Logo with Futuristic Effects */}
+                        <div className="relative">
+                            <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-yellow-400/20 via-yellow-500/30 to-yellow-400/20 blur-xl animate-pulse-slow"></div>
+                            <img
+                                src="/logo.png"
+                                alt="Strangers Connect Logo"
+                                className="h-12 w-12 object-contain rounded-2xl relative z-10 transition-all duration-300 hover:scale-110 hover:rotate-3 logo-glow"
+                                style={{
+                                    boxShadow: isDarkMode 
+                                        ? '0 0 20px rgba(234, 179, 8, 0.4), 0 0 40px rgba(234, 179, 8, 0.2), inset 0 0 20px rgba(234, 179, 8, 0.1)'
+                                        : '0 0 15px rgba(234, 179, 8, 0.3), 0 0 30px rgba(234, 179, 8, 0.15)'
+                                }}
+                                onError={(e) => {
+                                    // Hide logo if file not found - no fallback emoji
+                                    const target = e.target as HTMLImageElement
+                                    target.style.display = 'none'
+                                }}
+                            />
+                        </div>
                         <div>
-                            <h1 className={`text-2xl sm:text-3xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Strangers Connect</h1>
-                            <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Connect • Chat • Video</p>
+                            <h1 className={`text-2xl sm:text-3xl font-bold transition-all duration-300 ${isDarkMode ? 'text-white glow-yellow' : 'text-gray-900'}`}>Strangers Connect</h1>
+                            <p className={`text-sm transition-all duration-300 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Connect • Chat • Video</p>
                         </div>
                     </div>
 
@@ -1709,12 +1717,18 @@ export default function Home() {
                 {!isMatched && !isSearching && (
                     <div className="text-center py-12 sm:py-20">
                         <div className={`inline-block p-6 rounded-3xl mb-8 ${isDarkMode ? 'bg-gray-800/50' : 'bg-white/50'} backdrop-blur-sm border ${isDarkMode ? 'border-gray-700' : 'border-gray-200'} shadow-2xl`}>
-                            {/* Logo on Homepage */}
-                            <div className="mb-6 flex justify-center">
+                            {/* Logo on Homepage with Futuristic Effects */}
+                            <div className="mb-6 flex justify-center relative">
+                                <div className="absolute inset-0 rounded-3xl bg-gradient-to-r from-yellow-400/30 via-yellow-500/40 to-yellow-400/30 blur-2xl animate-pulse-slow"></div>
                                 <img
                                     src="/logo.png"
                                     alt="Strangers Connect"
-                                    className="h-32 w-auto object-contain"
+                                    className="h-32 w-32 object-contain rounded-3xl relative z-10 transition-all duration-500 hover:scale-110 hover:rotate-6 logo-glow-homepage"
+                                    style={{
+                                        boxShadow: isDarkMode 
+                                            ? '0 0 40px rgba(234, 179, 8, 0.5), 0 0 80px rgba(234, 179, 8, 0.3), inset 0 0 40px rgba(234, 179, 8, 0.15)'
+                                            : '0 0 30px rgba(234, 179, 8, 0.4), 0 0 60px rgba(234, 179, 8, 0.2)'
+                                    }}
                                     onError={(e) => {
                                         // Hide logo if file not found - no fallback emoji
                                         const target = e.target as HTMLImageElement
@@ -1722,7 +1736,7 @@ export default function Home() {
                                     }}
                                 />
                             </div>
-                            <h2 className={`text-3xl sm:text-4xl font-bold mb-3 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                            <h2 className={`text-3xl sm:text-4xl font-bold mb-3 transition-all duration-300 ${isDarkMode ? 'text-white glow-yellow' : 'text-gray-900'}`}>
                                 Connect with Strangers
                             </h2>
                             <p className={`text-lg ${isDarkMode ? 'text-gray-400' : 'text-gray-600'} mb-8 max-w-md mx-auto`}>
@@ -1731,31 +1745,36 @@ export default function Home() {
                             <button
                                 onClick={findStranger}
                                 disabled={!isConnected}
-                                className={`px-8 py-4 rounded-xl font-semibold text-lg transition-all duration-200 shadow-xl hover:shadow-2xl transform hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${isConnected
+                                className={`px-8 py-4 rounded-xl font-semibold text-lg transition-all duration-300 shadow-xl hover:shadow-2xl transform hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed futuristic-button relative overflow-hidden ${isConnected
                                     ? isDarkMode
                                         ? 'bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-400 hover:to-yellow-500 text-black shadow-yellow-500/50'
                                         : 'bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-300 hover:to-yellow-400 text-black shadow-yellow-400/50'
                                     : `${isDarkMode ? 'bg-gray-700 text-gray-500' : 'bg-gray-200 text-gray-400'}`
                                     }`}
+                                style={isConnected ? {
+                                    boxShadow: isDarkMode
+                                        ? '0 0 20px rgba(234, 179, 8, 0.5), 0 0 40px rgba(234, 179, 8, 0.3), inset 0 0 20px rgba(234, 179, 8, 0.1)'
+                                        : '0 0 15px rgba(234, 179, 8, 0.4), 0 0 30px rgba(234, 179, 8, 0.2)'
+                                } : {}}
                             >
-                                {isConnected ? '🎯 Find Stranger' : 'Connecting...'}
+                                <span className="relative z-10">{isConnected ? '🎯 Find Stranger' : 'Connecting...'}</span>
                             </button>
                         </div>
 
                         {/* Features Grid */}
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mt-12 max-w-4xl mx-auto">
-                            <div className={`p-6 rounded-2xl ${isDarkMode ? 'bg-gray-800/50 border border-gray-700' : 'bg-white/50 border border-gray-200'} backdrop-blur-sm transition-all duration-200 hover:scale-105`}>
-                                <div className="text-4xl mb-3">🔒</div>
+                            <div className={`p-6 rounded-2xl ${isDarkMode ? 'bg-gray-800/50 border border-gray-700' : 'bg-white/50 border border-gray-200'} backdrop-blur-sm transition-all duration-300 hover:scale-105 hover:border-yellow-500/50 animate-float`} style={{ animationDelay: '0s' }}>
+                                <div className="text-4xl mb-3 transition-transform duration-300 hover:scale-110">🔒</div>
                                 <h3 className={`font-semibold mb-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>End-to-End Encrypted</h3>
                                 <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>Your messages are private</p>
                             </div>
-                            <div className={`p-6 rounded-2xl ${isDarkMode ? 'bg-gray-800/50 border border-gray-700' : 'bg-white/50 border border-gray-200'} backdrop-blur-sm transition-all duration-200 hover:scale-105`}>
-                                <div className="text-4xl mb-3">🎥</div>
+                            <div className={`p-6 rounded-2xl ${isDarkMode ? 'bg-gray-800/50 border border-gray-700' : 'bg-white/50 border border-gray-200'} backdrop-blur-sm transition-all duration-300 hover:scale-105 hover:border-yellow-500/50 animate-float`} style={{ animationDelay: '1s' }}>
+                                <div className="text-4xl mb-3 transition-transform duration-300 hover:scale-110">🎥</div>
                                 <h3 className={`font-semibold mb-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>HD Video Chat</h3>
                                 <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>Crystal clear video calls</p>
                             </div>
-                            <div className={`p-6 rounded-2xl ${isDarkMode ? 'bg-gray-800/50 border border-gray-700' : 'bg-white/50 border border-gray-200'} backdrop-blur-sm transition-all duration-200 hover:scale-105`}>
-                                <div className="text-4xl mb-3">🌍</div>
+                            <div className={`p-6 rounded-2xl ${isDarkMode ? 'bg-gray-800/50 border border-gray-700' : 'bg-white/50 border border-gray-200'} backdrop-blur-sm transition-all duration-300 hover:scale-105 hover:border-yellow-500/50 animate-float`} style={{ animationDelay: '2s' }}>
+                                <div className="text-4xl mb-3 transition-transform duration-300 hover:scale-110">🌍</div>
                                 <h3 className={`font-semibold mb-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Global Reach</h3>
                                 <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>Connect worldwide</p>
                             </div>

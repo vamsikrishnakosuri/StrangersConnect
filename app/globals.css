@@ -123,4 +123,182 @@ input[type="range"]::-moz-range-thumb:hover {
   box-shadow: 0 3px 6px rgba(0, 0, 0, 0.3);
 }
 
+/* Futuristic Sci-Fi Animations */
+@keyframes pulse-slow {
+  0%, 100% {
+    opacity: 0.4;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale(1.05);
+  }
+}
+
+@keyframes glow-pulse {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(234, 179, 8, 0.4), 0 0 40px rgba(234, 179, 8, 0.2);
+  }
+  50% {
+    box-shadow: 0 0 30px rgba(234, 179, 8, 0.6), 0 0 60px rgba(234, 179, 8, 0.4);
+  }
+}
+
+@keyframes glow-pulse-homepage {
+  0%, 100% {
+    box-shadow: 0 0 40px rgba(234, 179, 8, 0.5), 0 0 80px rgba(234, 179, 8, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 60px rgba(234, 179, 8, 0.7), 0 0 120px rgba(234, 179, 8, 0.5);
+  }
+}
+
+@keyframes scan-line {
+  0% {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+  50% {
+    opacity: 0.3;
+  }
+  100% {
+    transform: translateY(100vh);
+    opacity: 0;
+  }
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -1000px 0;
+  }
+  100% {
+    background-position: 1000px 0;
+  }
+}
+
+@keyframes border-glow {
+  0%, 100% {
+    border-color: rgba(234, 179, 8, 0.3);
+    box-shadow: 0 0 10px rgba(234, 179, 8, 0.2);
+  }
+  50% {
+    border-color: rgba(234, 179, 8, 0.6);
+    box-shadow: 0 0 20px rgba(234, 179, 8, 0.4);
+  }
+}
+
+.animate-pulse-slow {
+  animation: pulse-slow 3s ease-in-out infinite;
+}
+
+.logo-glow {
+  animation: glow-pulse 2s ease-in-out infinite;
+}
+
+.logo-glow-homepage {
+  animation: glow-pulse-homepage 2.5s ease-in-out infinite;
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+.animate-scan-line {
+  animation: scan-line 8s linear infinite;
+}
+
+/* Futuristic Button Effects */
+.futuristic-button {
+  position: relative;
+  overflow: hidden;
+}
+
+.futuristic-button::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.2),
+    transparent
+  );
+  transition: left 0.5s;
+}
+
+.futuristic-button:hover::before {
+  left: 100%;
+}
+
+/* Sci-Fi Glow Effects */
+.glow-yellow {
+  text-shadow: 0 0 10px rgba(234, 179, 8, 0.5),
+               0 0 20px rgba(234, 179, 8, 0.3),
+               0 0 30px rgba(234, 179, 8, 0.2);
+}
+
+.glow-blue {
+  text-shadow: 0 0 10px rgba(59, 130, 246, 0.5),
+               0 0 20px rgba(59, 130, 246, 0.3),
+               0 0 30px rgba(59, 130, 246, 0.2);
+}
+
+/* Subtle Background Animation */
+@keyframes gradient-shift {
+  0%, 100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+.bg-gradient-animated {
+  background-size: 200% 200%;
+  animation: gradient-shift 10s ease infinite;
+}
+
+/* Holographic Effect */
+.holographic {
+  background: linear-gradient(
+    135deg,
+    rgba(234, 179, 8, 0.1) 0%,
+    rgba(59, 130, 246, 0.1) 50%,
+    rgba(234, 179, 8, 0.1) 100%
+  );
+  background-size: 200% 200%;
+  animation: gradient-shift 5s ease infinite;
+}
+
+/* Scan Line Effect (optional overlay) */
+.scan-line-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    rgba(234, 179, 8, 0.5),
+    transparent
+  );
+  pointer-events: none;
+  z-index: 9999;
+  animation: scan-line 8s linear infinite;
+  display: none; /* Can be enabled for extra sci-fi effect */
+}
+
 
