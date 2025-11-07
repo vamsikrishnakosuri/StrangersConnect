@@ -1055,6 +1055,10 @@ export default function Home() {
             setStrangerId(null)
             setHasRemoteStream(false) // Reset stream state
             setRemoteVideoReady(false) // Reset ready state
+            // Reset audio states
+            setIsLocalAudioMuted(false)
+            setLocalAudioVolume(100)
+            setRemoteAudioVolume(100)
             stopVideo()
             setMessages([{ id: uuidv4(), text: 'Stranger disconnected', sender: 'stranger' }])
         })
@@ -1095,6 +1099,7 @@ export default function Home() {
             socket.emit('disconnect-stranger', { strangerId })
             setIsMatched(false)
             setStrangerId(null)
+            strangerIdRef.current = null // Reset ref
             setHasRemoteStream(false) // Reset stream state
             setRemoteVideoReady(false) // Reset ready state
             setMessages([])
@@ -1103,6 +1108,31 @@ export default function Home() {
             setLocalAudioVolume(100)
             setRemoteAudioVolume(100)
             stopVideo()
+        }
+    }
+
+    // Skip to next stranger (like Omegle)
+    const skipStranger = () => {
+        if (socket && strangerId) {
+            // Disconnect from current stranger
+            socket.emit('disconnect-stranger', { strangerId })
+            setIsMatched(false)
+            setStrangerId(null)
+            strangerIdRef.current = null // Reset ref
+            setHasRemoteStream(false) // Reset stream state
+            setRemoteVideoReady(false) // Reset ready state
+            setMessages([])
+            // Reset audio states
+            setIsLocalAudioMuted(false)
+            setLocalAudioVolume(100)
+            setRemoteAudioVolume(100)
+            stopVideo()
+            
+            // Automatically search for next stranger
+            setTimeout(() => {
+                setIsSearching(true)
+                socket.emit('find-stranger', userId.current)
+            }, 100) // Small delay to ensure cleanup completes
         }
     }
 
@@ -1726,16 +1756,32 @@ export default function Home() {
                                 </div>
                             </div>
 
-                            {/* Disconnect Button */}
-                            <button
-                                onClick={disconnect}
-                                className={`px-8 py-4 rounded-xl font-semibold transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-105 active:scale-95 ${isDarkMode
-                                    ? 'bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white'
-                                    : 'bg-gradient-to-r from-red-500 to-red-600 hover:from-red-400 hover:to-red-500 text-white'
-                                    }`}
-                            >
-                                Disconnect
-                            </button>
+                            {/* Call Control Buttons */}
+                            <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+                                {/* Next Stranger Button (Skip) */}
+                                <button
+                                    onClick={skipStranger}
+                                    className={`px-6 py-3 rounded-xl font-semibold transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-105 active:scale-95 flex items-center justify-center gap-2 ${isDarkMode
+                                        ? 'bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 text-white'
+                                        : 'bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-400 hover:to-blue-500 text-white'
+                                        }`}
+                                >
+                                    <span>⏭️</span>
+                                    <span>Next Stranger</span>
+                                </button>
+
+                                {/* End Call Button */}
+                                <button
+                                    onClick={disconnect}
+                                    className={`px-6 py-3 rounded-xl font-semibold transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-105 active:scale-95 flex items-center justify-center gap-2 ${isDarkMode
+                                        ? 'bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white'
+                                        : 'bg-gradient-to-r from-red-500 to-red-600 hover:from-red-400 hover:to-red-500 text-white'
+                                        }`}
+                                >
+                                    <span>📞</span>
+                                    <span>End Call</span>
+                                </button>
+                            </div>
                         </>
                     )}
                 </div>
