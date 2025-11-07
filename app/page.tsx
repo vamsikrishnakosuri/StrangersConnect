@@ -422,11 +422,20 @@ export default function Home() {
                     remoteVideoRef.current.style.opacity = '1'
                     remoteVideoRef.current.style.visibility = 'visible'
                     remoteVideoRef.current.style.zIndex = '15'
+                    // Force video to be visible in the DOM
+                    remoteVideoRef.current.hidden = false
                     console.log('✅ Made video visible BEFORE setting stream')
                 }
 
                 // ALWAYS set the stream (even if already set - stream might have changed)
                 remoteVideoRef.current.srcObject = event.streams[0]
+                
+                // Force video to be visible after setting stream
+                if (remoteVideoRef.current) {
+                    remoteVideoRef.current.style.display = 'block'
+                    remoteVideoRef.current.style.visibility = 'visible'
+                    remoteVideoRef.current.style.opacity = '1'
+                }
 
                 // CRITICAL: Update state immediately so opacity calculation works during render
                 setHasRemoteStream(true)
@@ -1249,6 +1258,7 @@ export default function Home() {
                         style={{
                             opacity: isMatched ? '1' : '0.01',
                             display: isMatched ? 'block' : 'none',
+                            visibility: isMatched ? 'visible' : 'hidden',
                             // If isLocalMain is true, remote becomes PIP (small, bottom-right)
                             // If isLocalMain is false, remote is main (full screen)
                             width: isLocalMain ? '192px' : '100%',
@@ -1258,7 +1268,7 @@ export default function Home() {
                             right: isLocalMain ? '16px' : '0',
                             bottom: isLocalMain ? '16px' : '0',
                             zIndex: isLocalMain ? 20 : 15,
-                            pointerEvents: 'auto',
+                            pointerEvents: isMatched ? 'auto' : 'none',
                             cursor: remoteVideoDragging ? 'grabbing' : 'grab'
                         }}
                         onClick={(e) => {
@@ -1383,11 +1393,13 @@ export default function Home() {
                                 style={{
                                     width: '100%',
                                     height: '100%',
-                                    display: 'block',
+                                    display: isMatched ? 'block' : 'none',
                                     pointerEvents: 'none',
-                                    visibility: 'visible',
+                                    visibility: isMatched ? 'visible' : 'hidden',
+                                    opacity: isMatched ? '1' : '0',
                                     objectFit: 'cover',
-                                    objectPosition: 'center'
+                                    objectPosition: 'center',
+                                    zIndex: 10
                                 }}
                                 onLoadedMetadata={() => {
                                     console.log('🎥 Video metadata loaded in DOM')
