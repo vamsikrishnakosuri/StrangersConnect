@@ -842,19 +842,8 @@ export default function Home() {
 
             console.log('✅ Camera ready, peer connection:', !!pc)
 
-            // CRITICAL: Apply any queued ICE candidates that arrived before peer connection was ready
-            if (pendingReceivedIceCandidatesRef.current.length > 0 && peerConnectionRef.current) {
-                console.log(`📥 Applying ${pendingReceivedIceCandidatesRef.current.length} queued received ICE candidates`)
-                for (const candidate of pendingReceivedIceCandidatesRef.current) {
-                    try {
-                        await peerConnectionRef.current.addIceCandidate(candidate)
-                        console.log('✅ Applied queued received ICE candidate')
-                    } catch (error) {
-                        console.error('❌ Error applying queued ICE candidate:', error)
-                    }
-                }
-                pendingReceivedIceCandidatesRef.current = []
-            }
+            // CRITICAL: Don't apply queued ICE candidates here - wait for remote description to be set
+            // They will be applied in the webrtc-offer handler after setRemoteDescription is called
 
             // CRITICAL: Update ICE candidate handler BEFORE creating offer
             // This ensures ICE candidates generated during offer creation are sent immediately
@@ -976,18 +965,30 @@ export default function Home() {
                     newSocket.emit('webrtc-answer', { answer, to: data.from })
                     console.log('📤 Sent answer to:', data.from)
 
-                    // CRITICAL: Apply any queued ICE candidates that arrived before peer connection was ready
+                    // CRITICAL: Apply any queued ICE candidates that arrived before remote description was set
+                    // Must be done AFTER setRemoteDescription, otherwise we get InvalidStateError
                     if (pendingReceivedIceCandidatesRef.current.length > 0) {
                         console.log(`📥 Applying ${pendingReceivedIceCandidatesRef.current.length} queued received ICE candidates after setting remote description`)
+                        // Wait a tiny bit to ensure remote description is fully set
+                        await new Promise(resolve => setTimeout(resolve, 50))
                         for (const candidate of pendingReceivedIceCandidatesRef.current) {
                             try {
-                                await peerConnectionRef.current.addIceCandidate(candidate)
-                                console.log('✅ Applied queued received ICE candidate')
+                                // Double-check that remote description is set
+                                if (peerConnectionRef.current.remoteDescription) {
+                                    await peerConnectionRef.current.addIceCandidate(candidate)
+                                    console.log('✅ Applied queued received ICE candidate')
+                                } else {
+                                    console.warn('⚠️ Remote description not set yet, keeping candidate in queue')
+                                }
                             } catch (error) {
                                 console.error('❌ Error applying queued ICE candidate:', error)
+                                // If it fails, keep it in queue - might be applied later
                             }
                         }
-                        pendingReceivedIceCandidatesRef.current = []
+                        // Only clear if all were successfully applied
+                        if (peerConnectionRef.current.remoteDescription) {
+                            pendingReceivedIceCandidatesRef.current = []
+                        }
                     }
 
                     // Send any queued ICE candidates now
