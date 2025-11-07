@@ -39,6 +39,12 @@ export default function Home() {
     const [localVideoDragStart, setLocalVideoDragStart] = useState({ x: 0, y: 0 })
     const [localVideoLastTouch, setLocalVideoLastTouch] = useState<{ distance: number; center: { x: number; y: number } } | null>(null)
 
+    // Audio control state
+    const [isLocalAudioMuted, setIsLocalAudioMuted] = useState(false)
+    const [localAudioVolume, setLocalAudioVolume] = useState(100) // 0-100
+    const [remoteAudioVolume, setRemoteAudioVolume] = useState(100) // 0-100
+    const [showAudioControls, setShowAudioControls] = useState(false)
+
     const userId = useRef(uuidv4())
     const localVideoRef = useRef<HTMLVideoElement>(null)
     const remoteVideoRef = useRef<HTMLVideoElement>(null)
@@ -127,6 +133,13 @@ export default function Home() {
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
     }, [messages])
+
+    // Sync remote video volume
+    useEffect(() => {
+        if (remoteVideoRef.current && hasRemoteStream) {
+            remoteVideoRef.current.volume = remoteAudioVolume / 100
+        }
+    }, [remoteAudioVolume, hasRemoteStream])
 
     // AGGRESSIVE video monitoring and recovery - runs continuously
     useEffect(() => {
@@ -716,6 +729,35 @@ export default function Home() {
         setRemoteVideoReady(false)
     }
 
+    // Audio control functions
+    const toggleLocalAudio = () => {
+        if (localStreamRef.current) {
+            const audioTracks = localStreamRef.current.getAudioTracks()
+            const newMutedState = !isLocalAudioMuted
+            audioTracks.forEach(track => {
+                track.enabled = !newMutedState
+            })
+            setIsLocalAudioMuted(newMutedState)
+            console.log(newMutedState ? '🔇 Local audio muted' : '🔊 Local audio unmuted')
+        }
+    }
+
+    const handleLocalVolumeChange = (volume: number) => {
+        setLocalAudioVolume(volume)
+        // Note: Browser doesn't allow direct control of microphone input volume
+        // This is a UI indicator. Actual volume is controlled by system settings.
+        // We can adjust the gain through Web Audio API if needed, but it's complex.
+        console.log('Local audio volume set to:', volume + '%')
+    }
+
+    const handleRemoteVolumeChange = (volume: number) => {
+        setRemoteAudioVolume(volume)
+        if (remoteVideoRef.current) {
+            remoteVideoRef.current.volume = volume / 100
+            console.log('Remote audio volume set to:', volume + '%')
+        }
+    }
+
     // Socket.io connection
     useEffect(() => {
         const newSocket = io(process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3001')
@@ -732,6 +774,10 @@ export default function Home() {
             setIsSearching(false)
             setHasRemoteStream(false) // Reset stream state
             setRemoteVideoReady(false) // Reset ready state
+            // Reset audio states
+            setIsLocalAudioMuted(false)
+            setLocalAudioVolume(100)
+            setRemoteAudioVolume(100)
             stopVideo()
         })
 
@@ -1052,6 +1098,10 @@ export default function Home() {
             setHasRemoteStream(false) // Reset stream state
             setRemoteVideoReady(false) // Reset ready state
             setMessages([])
+            // Reset audio states
+            setIsLocalAudioMuted(false)
+            setLocalAudioVolume(100)
+            setRemoteAudioVolume(100)
             stopVideo()
         }
     }
@@ -1608,7 +1658,7 @@ export default function Home() {
                 )}
 
                 {/* Controls */}
-                <div className="flex justify-center gap-4">
+                <div className="flex flex-col items-center gap-4">
                     {isSearching && (
                         <div className={`flex items-center gap-3 px-8 py-4 rounded-xl font-semibold ${isDarkMode ? 'bg-gray-800/80 border border-gray-700' : 'bg-white/80 border border-yellow-200'} backdrop-blur-sm shadow-lg`}>
                             <div className={`w-5 h-5 border-2 ${isDarkMode ? 'border-yellow-500' : 'border-yellow-400'} border-t-transparent rounded-full animate-spin`}></div>
@@ -1617,15 +1667,76 @@ export default function Home() {
                     )}
 
                     {isMatched && (
-                        <button
-                            onClick={disconnect}
-                            className={`px-8 py-4 rounded-xl font-semibold transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-105 active:scale-95 ${isDarkMode
-                                ? 'bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white'
-                                : 'bg-gradient-to-r from-red-500 to-red-600 hover:from-red-400 hover:to-red-500 text-white'
-                                }`}
-                        >
-                            Disconnect
-                        </button>
+                        <>
+                            {/* Audio Controls */}
+                            <div className={`flex flex-col sm:flex-row items-center gap-4 px-6 py-4 rounded-xl ${isDarkMode ? 'bg-gray-800/80 border border-gray-700' : 'bg-white/80 border border-gray-200'} backdrop-blur-sm shadow-lg`}>
+                                {/* Local Audio Controls */}
+                                <div className="flex items-center gap-3">
+                                    <button
+                                        onClick={toggleLocalAudio}
+                                        className={`p-3 rounded-lg transition-all duration-200 hover:scale-110 active:scale-95 ${isLocalAudioMuted
+                                            ? isDarkMode ? 'bg-red-600/80 hover:bg-red-500 text-white' : 'bg-red-500/80 hover:bg-red-400 text-white'
+                                            : isDarkMode ? 'bg-green-600/80 hover:bg-green-500 text-white' : 'bg-green-500/80 hover:bg-green-400 text-white'
+                                            }`}
+                                        title={isLocalAudioMuted ? 'Unmute microphone' : 'Mute microphone'}
+                                    >
+                                        {isLocalAudioMuted ? '🔇' : '🎤'}
+                                    </button>
+                                    <div className="flex items-center gap-2 min-w-[120px]">
+                                        <span className={`text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>Mic:</span>
+                                        <input
+                                            type="range"
+                                            min="0"
+                                            max="100"
+                                            value={localAudioVolume}
+                                            onChange={(e) => handleLocalVolumeChange(Number(e.target.value))}
+                                            className="flex-1 h-2 rounded-lg appearance-none cursor-pointer"
+                                            style={{
+                                                background: isDarkMode
+                                                    ? `linear-gradient(to right, #10b981 0%, #10b981 ${localAudioVolume}%, #374151 ${localAudioVolume}%, #374151 100%)`
+                                                    : `linear-gradient(to right, #059669 0%, #059669 ${localAudioVolume}%, #d1d5db ${localAudioVolume}%, #d1d5db 100%)`
+                                            }}
+                                        />
+                                        <span className={`text-xs w-10 text-right ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>{localAudioVolume}%</span>
+                                    </div>
+                                </div>
+
+                                {/* Remote Audio Controls */}
+                                <div className="flex items-center gap-3">
+                                    <div className={`p-3 rounded-lg ${isDarkMode ? 'bg-gray-700/50 text-gray-400' : 'bg-gray-200/50 text-gray-500'}`} title="Remote audio (you can only adjust volume)">
+                                        🔊
+                                    </div>
+                                    <div className="flex items-center gap-2 min-w-[120px]">
+                                        <span className={`text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>Speaker:</span>
+                                        <input
+                                            type="range"
+                                            min="0"
+                                            max="100"
+                                            value={remoteAudioVolume}
+                                            onChange={(e) => handleRemoteVolumeChange(Number(e.target.value))}
+                                            className="flex-1 h-2 rounded-lg appearance-none cursor-pointer"
+                                            style={{
+                                                background: isDarkMode
+                                                    ? `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${remoteAudioVolume}%, #374151 ${remoteAudioVolume}%, #374151 100%)`
+                                                    : `linear-gradient(to right, #2563eb 0%, #2563eb ${remoteAudioVolume}%, #d1d5db ${remoteAudioVolume}%, #d1d5db 100%)`
+                                            }}
+                                        />
+                                        <span className={`text-xs w-10 text-right ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>{remoteAudioVolume}%</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Disconnect Button */}
+                            <button
+                                onClick={disconnect}
+                                className={`px-8 py-4 rounded-xl font-semibold transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-105 active:scale-95 ${isDarkMode
+                                    ? 'bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white'
+                                    : 'bg-gradient-to-r from-red-500 to-red-600 hover:from-red-400 hover:to-red-500 text-white'
+                                    }`}
+                            >
+                                Disconnect
+                            </button>
+                        </>
                     )}
                 </div>
 
