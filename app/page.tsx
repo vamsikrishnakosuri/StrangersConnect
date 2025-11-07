@@ -174,28 +174,28 @@ export default function Home() {
             vy: number
             radius: number
 
-            constructor() {
-                this.x = Math.random() * canvas.width
-                this.y = Math.random() * canvas.height
+            constructor(canvasWidth: number, canvasHeight: number) {
+                this.x = Math.random() * canvasWidth
+                this.y = Math.random() * canvasHeight
                 this.vx = (Math.random() - 0.5) * 0.5
                 this.vy = (Math.random() - 0.5) * 0.5
                 this.radius = Math.random() * 2 + 1
             }
 
-            update() {
+            update(canvasWidth: number, canvasHeight: number) {
                 this.x += this.vx
                 this.y += this.vy
 
                 // Bounce off edges
-                if (this.x < 0 || this.x > canvas.width) this.vx *= -1
-                if (this.y < 0 || this.y > canvas.height) this.vy *= -1
+                if (this.x < 0 || this.x > canvasWidth) this.vx *= -1
+                if (this.y < 0 || this.y > canvasHeight) this.vy *= -1
 
                 // Keep particles in bounds
-                this.x = Math.max(0, Math.min(canvas.width, this.x))
-                this.y = Math.max(0, Math.min(canvas.height, this.y))
+                this.x = Math.max(0, Math.min(canvasWidth, this.x))
+                this.y = Math.max(0, Math.min(canvasHeight, this.y))
             }
 
-            draw() {
+            draw(ctx: CanvasRenderingContext2D) {
                 ctx.beginPath()
                 ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2)
                 ctx.fillStyle = 'rgba(59, 130, 246, 0.8)'
@@ -213,7 +213,7 @@ export default function Home() {
         const particleCount = Math.min(80, Math.floor((canvas.width * canvas.height) / 15000))
         const particles: Particle[] = []
         for (let i = 0; i < particleCount; i++) {
-            particles.push(new Particle())
+            particles.push(new Particle(canvas.width, canvas.height))
         }
 
         // Connection distance
@@ -225,8 +225,8 @@ export default function Home() {
 
             // Update and draw particles
             particles.forEach(particle => {
-                particle.update()
-                particle.draw()
+                particle.update(canvas.width, canvas.height)
+                particle.draw(ctx)
             })
 
             // Draw connections
