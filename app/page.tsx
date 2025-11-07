@@ -57,6 +57,8 @@ export default function Home() {
     const localStreamRef = useRef<MediaStream | null>(null)
     const peerConnectionRef = useRef<RTCPeerConnection | null>(null)
     const messagesEndRef = useRef<HTMLDivElement>(null)
+    const canvasRef = useRef<HTMLCanvasElement | null>(null)
+    const animationFrameRef = useRef<number | null>(null)
     const encryptionKeyRef = useRef<CryptoKey | null>(null) // Shared encryption key for E2E encryption
     const pendingIceCandidatesRef = useRef<RTCIceCandidate[]>([]) // Queue ICE candidates until strangerId is ready
     const pendingReceivedIceCandidatesRef = useRef<RTCIceCandidateInit[]>([]) // Queue ICE candidates received before peer connection is ready
@@ -146,6 +148,119 @@ export default function Home() {
             remoteVideoRef.current.volume = remoteAudioVolume / 100
         }
     }, [remoteAudioVolume, hasRemoteStream])
+
+    // Particle Network Background Animation
+    useEffect(() => {
+        const canvas = document.getElementById('particle-network') as HTMLCanvasElement
+        if (!canvas) return
+
+        canvasRef.current = canvas
+        const ctx = canvas.getContext('2d')
+        if (!ctx) return
+
+        // Set canvas size
+        const resizeCanvas = () => {
+            canvas.width = window.innerWidth
+            canvas.height = window.innerHeight
+        }
+        resizeCanvas()
+        window.addEventListener('resize', resizeCanvas)
+
+        // Particle class
+        class Particle {
+            x: number
+            y: number
+            vx: number
+            vy: number
+            radius: number
+
+            constructor() {
+                this.x = Math.random() * canvas.width
+                this.y = Math.random() * canvas.height
+                this.vx = (Math.random() - 0.5) * 0.5
+                this.vy = (Math.random() - 0.5) * 0.5
+                this.radius = Math.random() * 2 + 1
+            }
+
+            update() {
+                this.x += this.vx
+                this.y += this.vy
+
+                // Bounce off edges
+                if (this.x < 0 || this.x > canvas.width) this.vx *= -1
+                if (this.y < 0 || this.y > canvas.height) this.vy *= -1
+
+                // Keep particles in bounds
+                this.x = Math.max(0, Math.min(canvas.width, this.x))
+                this.y = Math.max(0, Math.min(canvas.height, this.y))
+            }
+
+            draw() {
+                ctx.beginPath()
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2)
+                ctx.fillStyle = 'rgba(59, 130, 246, 0.8)'
+                ctx.fill()
+                
+                // Glow effect
+                ctx.shadowBlur = 10
+                ctx.shadowColor = 'rgba(59, 130, 246, 0.8)'
+                ctx.fill()
+                ctx.shadowBlur = 0
+            }
+        }
+
+        // Create particles
+        const particleCount = Math.min(80, Math.floor((canvas.width * canvas.height) / 15000))
+        const particles: Particle[] = []
+        for (let i = 0; i < particleCount; i++) {
+            particles.push(new Particle())
+        }
+
+        // Connection distance
+        const connectionDistance = 150
+
+        // Animation loop
+        const animate = () => {
+            ctx.clearRect(0, 0, canvas.width, canvas.height)
+
+            // Update and draw particles
+            particles.forEach(particle => {
+                particle.update()
+                particle.draw()
+            })
+
+            // Draw connections
+            for (let i = 0; i < particles.length; i++) {
+                for (let j = i + 1; j < particles.length; j++) {
+                    const dx = particles[i].x - particles[j].x
+                    const dy = particles[i].y - particles[j].y
+                    const distance = Math.sqrt(dx * dx + dy * dy)
+
+                    if (distance < connectionDistance) {
+                        const opacity = (1 - distance / connectionDistance) * 0.3
+                        ctx.beginPath()
+                        ctx.moveTo(particles[i].x, particles[i].y)
+                        ctx.lineTo(particles[j].x, particles[j].y)
+                        ctx.strokeStyle = `rgba(59, 130, 246, ${opacity})`
+                        ctx.lineWidth = 1
+                        ctx.stroke()
+                    }
+                }
+            }
+
+            animationFrameRef.current = requestAnimationFrame(animate)
+        }
+
+        animate()
+
+        // Cleanup
+        return () => {
+            window.removeEventListener('resize', resizeCanvas)
+            if (animationFrameRef.current) {
+                cancelAnimationFrame(animationFrameRef.current)
+            }
+        }
+    }, [])
 
     // AGGRESSIVE video monitoring and recovery - runs continuously
     useEffect(() => {
@@ -1224,22 +1339,28 @@ export default function Home() {
     }
 
     return (
-        <div className={`min-h-screen transition-colors duration-300 ${isDarkMode ? 'bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900' : 'bg-gradient-to-br from-yellow-50 via-white to-yellow-50'} ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        <div className={`min-h-screen transition-colors duration-300 relative overflow-hidden ${isDarkMode ? 'bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900' : 'bg-gradient-to-br from-yellow-50 via-white to-yellow-50'} ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+            {/* Animated Neural Network Background */}
+            <canvas
+                id="particle-network"
+                className="fixed inset-0 w-full h-full pointer-events-none"
+                style={{ zIndex: 0, opacity: isDarkMode ? 0.4 : 0.2 }}
+            />
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 relative z-10">
                 {/* Modern Header with Dark Mode Toggle */}
                 <div className="flex items-center justify-between mb-8">
                     <div className="flex items-center gap-4">
-                        {/* Logo with Futuristic Effects */}
+                        {/* Logo with Subtle Futuristic Effects */}
                         <div className="relative">
-                            <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-yellow-400/20 via-yellow-500/30 to-yellow-400/20 blur-xl animate-pulse-slow"></div>
+                            <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-yellow-400/10 via-yellow-500/15 to-yellow-400/10 blur-lg animate-pulse-slow"></div>
                             <img
                                 src="/logo.png"
                                 alt="Strangers Connect Logo"
-                                className="h-12 w-12 object-contain rounded-2xl relative z-10 transition-all duration-300 hover:scale-110 hover:rotate-3 logo-glow"
+                                className="h-12 w-12 object-contain rounded-2xl relative z-10 transition-all duration-300 hover:scale-110 hover:rotate-3"
                                 style={{
                                     boxShadow: isDarkMode 
-                                        ? '0 0 20px rgba(234, 179, 8, 0.4), 0 0 40px rgba(234, 179, 8, 0.2), inset 0 0 20px rgba(234, 179, 8, 0.1)'
-                                        : '0 0 15px rgba(234, 179, 8, 0.3), 0 0 30px rgba(234, 179, 8, 0.15)'
+                                        ? '0 0 10px rgba(234, 179, 8, 0.2), 0 0 20px rgba(234, 179, 8, 0.1)'
+                                        : '0 0 8px rgba(234, 179, 8, 0.15), 0 0 15px rgba(234, 179, 8, 0.1)'
                                 }}
                                 onError={(e) => {
                                     // Hide logo if file not found - no fallback emoji
@@ -1717,17 +1838,17 @@ export default function Home() {
                 {!isMatched && !isSearching && (
                     <div className="text-center py-12 sm:py-20">
                         <div className={`inline-block p-6 rounded-3xl mb-8 ${isDarkMode ? 'bg-gray-800/50' : 'bg-white/50'} backdrop-blur-sm border ${isDarkMode ? 'border-gray-700' : 'border-gray-200'} shadow-2xl`}>
-                            {/* Logo on Homepage with Futuristic Effects */}
+                            {/* Logo on Homepage with Subtle Futuristic Effects */}
                             <div className="mb-6 flex justify-center relative">
-                                <div className="absolute inset-0 rounded-3xl bg-gradient-to-r from-yellow-400/30 via-yellow-500/40 to-yellow-400/30 blur-2xl animate-pulse-slow"></div>
+                                <div className="absolute inset-0 rounded-3xl bg-gradient-to-r from-yellow-400/15 via-yellow-500/20 to-yellow-400/15 blur-xl animate-pulse-slow"></div>
                                 <img
                                     src="/logo.png"
                                     alt="Strangers Connect"
-                                    className="h-32 w-32 object-contain rounded-3xl relative z-10 transition-all duration-500 hover:scale-110 hover:rotate-6 logo-glow-homepage"
+                                    className="h-32 w-32 object-contain rounded-3xl relative z-10 transition-all duration-500 hover:scale-110 hover:rotate-6"
                                     style={{
                                         boxShadow: isDarkMode 
-                                            ? '0 0 40px rgba(234, 179, 8, 0.5), 0 0 80px rgba(234, 179, 8, 0.3), inset 0 0 40px rgba(234, 179, 8, 0.15)'
-                                            : '0 0 30px rgba(234, 179, 8, 0.4), 0 0 60px rgba(234, 179, 8, 0.2)'
+                                            ? '0 0 20px rgba(234, 179, 8, 0.3), 0 0 40px rgba(234, 179, 8, 0.15)'
+                                            : '0 0 15px rgba(234, 179, 8, 0.25), 0 0 30px rgba(234, 179, 8, 0.1)'
                                     }}
                                     onError={(e) => {
                                         // Hide logo if file not found - no fallback emoji

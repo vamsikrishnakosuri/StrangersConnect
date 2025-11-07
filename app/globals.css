@@ -200,13 +200,7 @@ input[type="range"]::-moz-range-thumb:hover {
   animation: pulse-slow 3s ease-in-out infinite;
 }
 
-.logo-glow {
-  animation: glow-pulse 2s ease-in-out infinite;
-}
-
-.logo-glow-homepage {
-  animation: glow-pulse-homepage 2.5s ease-in-out infinite;
-}
+/* Logo glow classes removed - using inline styles for more control */
 
 .animate-float {
   animation: float 3s ease-in-out infinite;
