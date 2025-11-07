@@ -14,24 +14,82 @@ interface User {
   id: string
   socketId: string
   matchedWith: string | null
+  ipAddress?: string
+}
+
+interface UserReport {
+  reportedUserId: string
+  reporterUserId: string
+  timestamp: number
+  reason?: string
+}
+
+interface BannedUser {
+  userId: string
+  ipAddress?: string
+  banReason: string
+  bannedAt: number
+  reportCount: number
 }
 
 const users = new Map<string, User>()
 const waitingQueue: string[] = []
+const userReports = new Map<string, UserReport[]>() // userId -> reports received
+const bannedUsers = new Map<string, BannedUser>() // userId -> ban info
+const bannedIPs = new Set<string>() // IP addresses that are banned
+
+// Threshold for permanent ban (industry standard: 3-5 reports)
+const BAN_THRESHOLD = 5
 
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id)
+  
+  // Get IP address from socket
+  const ipAddress = socket.handshake.address || socket.request.socket.remoteAddress || 'unknown'
+  
+  // Check if IP is banned
+  if (bannedIPs.has(ipAddress)) {
+    console.log(`🚫 Blocked banned IP: ${ipAddress}`)
+    socket.emit('banned', { reason: 'Your IP address has been banned due to multiple reports of inappropriate behavior.' })
+    socket.disconnect()
+    return
+  }
 
   socket.on('register', (userId: string) => {
+    // Check if user is banned before allowing registration
+    if (bannedUsers.has(userId)) {
+      const banInfo = bannedUsers.get(userId)!
+      console.log(`🚫 Blocked banned user: ${userId} (${banInfo.reportCount} reports)`)
+      socket.emit('banned', { 
+        reason: `Your account has been permanently banned due to ${banInfo.reportCount} reports of inappropriate behavior.`,
+        reportCount: banInfo.reportCount
+      })
+      socket.disconnect()
+      return
+    }
+    
     users.set(userId, {
       id: userId,
       socketId: socket.id,
       matchedWith: null,
+      ipAddress: ipAddress,
     })
-    console.log('User registered:', userId)
+    console.log('User registered:', userId, 'IP:', ipAddress)
   })
 
   socket.on('find-stranger', (userId: string) => {
+    // Check if user is banned before allowing search
+    if (bannedUsers.has(userId)) {
+      const banInfo = bannedUsers.get(userId)!
+      console.log(`🚫 Blocked banned user from searching: ${userId}`)
+      socket.emit('banned', { 
+        reason: `Your account has been permanently banned due to ${banInfo.reportCount} reports of inappropriate behavior.`,
+        reportCount: banInfo.reportCount
+      })
+      socket.disconnect()
+      return
+    }
+
     const user = users.get(userId)
     if (!user || user.matchedWith) return
 
@@ -111,6 +169,84 @@ io.on('connection', (socket) => {
         stranger.matchedWith = null
         io.to(stranger.socketId).emit('disconnected')
       }
+    }
+  })
+
+  // Report user handler
+  socket.on('report-user', (data: { reportedUserId: string; reason?: string }) => {
+    const reporterUserId = Array.from(users.entries()).find(([_, u]) => u.socketId === socket.id)?.[0]
+    const reportedUserId = data.reportedUserId
+    
+    if (!reporterUserId || !reportedUserId) {
+      console.error('❌ Invalid report: missing user IDs')
+      return
+    }
+
+    // Prevent self-reporting
+    if (reporterUserId === reportedUserId) {
+      console.warn('⚠️ User tried to report themselves:', reporterUserId)
+      return
+    }
+
+    // Create report
+    const report: UserReport = {
+      reportedUserId: reportedUserId,
+      reporterUserId: reporterUserId,
+      timestamp: Date.now(),
+      reason: data.reason || 'Inappropriate content'
+    }
+
+    // Add report to user's report list
+    if (!userReports.has(reportedUserId)) {
+      userReports.set(reportedUserId, [])
+    }
+    userReports.get(reportedUserId)!.push(report)
+
+    const reportCount = userReports.get(reportedUserId)!.length
+    console.log(`🚨 Report #${reportCount} received for user ${reportedUserId} from ${reporterUserId}`)
+
+    // Check if user should be banned (5+ reports)
+    if (reportCount >= BAN_THRESHOLD) {
+      const reportedUser = users.get(reportedUserId)
+      const ipAddress = reportedUser?.ipAddress || 'unknown'
+      
+      // Ban the user
+      const banInfo: BannedUser = {
+        userId: reportedUserId,
+        ipAddress: ipAddress,
+        banReason: `Received ${reportCount} reports for inappropriate behavior`,
+        bannedAt: Date.now(),
+        reportCount: reportCount
+      }
+      
+      bannedUsers.set(reportedUserId, banInfo)
+      if (ipAddress !== 'unknown') {
+        bannedIPs.add(ipAddress)
+      }
+
+      console.log(`🚫 PERMANENT BAN: User ${reportedUserId} banned (${reportCount} reports, IP: ${ipAddress})`)
+
+      // Disconnect the banned user if they're still connected
+      if (reportedUser) {
+        io.to(reportedUser.socketId).emit('banned', {
+          reason: `Your account has been permanently banned due to ${reportCount} reports of inappropriate behavior.`,
+          reportCount: reportCount
+        })
+        io.to(reportedUser.socketId).disconnect()
+      }
+
+      // Notify the reporter
+      socket.emit('report-confirmed', {
+        message: 'User has been reported and permanently banned.',
+        reportCount: reportCount
+      })
+    } else {
+      // Notify reporter
+      socket.emit('report-confirmed', {
+        message: 'Report submitted successfully.',
+        reportCount: reportCount,
+        threshold: BAN_THRESHOLD
+      })
     }
   })
 

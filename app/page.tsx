@@ -908,10 +908,13 @@ export default function Home() {
 
     const confirmReport = () => {
         if (socket && strangerId) {
-            // In a real app, you'd send this to your backend for moderation
+            // Send report to server
+            socket.emit('report-user', {
+                reportedUserId: strangerId,
+                reason: 'Inappropriate content'
+            })
             console.log('🚨 Report submitted for user:', strangerId)
-            // For now, just show a confirmation and disconnect
-            alert('Thank you for reporting. The user has been reported and you will be disconnected.')
+            // Disconnect after reporting
             disconnect()
         }
         setShowReportModal(false)
@@ -1213,6 +1216,34 @@ export default function Home() {
                 // Queue candidate for later - peer connection not ready yet
                 console.log('📦 Queuing ICE candidate (peer connection not ready yet)')
                 pendingReceivedIceCandidatesRef.current.push(data.candidate)
+            }
+        })
+
+        newSocket.on('banned', (data: { reason: string; reportCount?: number }) => {
+            console.error('🚫 You have been banned:', data.reason)
+            setIsConnected(false)
+            setIsMatched(false)
+            setIsSearching(false)
+            stopVideo()
+            setMessages([{ 
+                id: uuidv4(), 
+                text: `🚫 Account Banned: ${data.reason}`, 
+                sender: 'stranger' 
+            }])
+            // Show ban message
+            alert(`🚫 Account Banned\n\n${data.reason}\n\nYou will be disconnected from the service.`)
+            if (newSocket) {
+                newSocket.disconnect()
+            }
+        })
+
+        newSocket.on('report-confirmed', (data: { message: string; reportCount?: number; threshold?: number }) => {
+            console.log('✅ Report confirmed:', data.message)
+            // Show confirmation (will be shown after modal closes)
+            if (data.reportCount && data.threshold) {
+                setTimeout(() => {
+                    alert(`✅ ${data.message}\n\nThis user now has ${data.reportCount}/${data.threshold} reports.`)
+                }, 100)
             }
         })
 
