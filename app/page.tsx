@@ -1915,17 +1915,17 @@ export default function Home() {
 
                         {/* Features Grid */}
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mt-12 max-w-4xl mx-auto">
-                            <div className={`p-6 rounded-2xl ${isDarkMode ? 'bg-gray-800/50 border border-gray-700' : 'bg-white/50 border border-gray-200'} backdrop-blur-sm transition-all duration-300 hover:scale-105 hover:border-yellow-500/50 animate-float`} style={{ animationDelay: '0s' }}>
+                            <div className={`p-6 rounded-2xl ${isDarkMode ? 'bg-gray-800/50 border border-gray-700' : 'bg-white/50 border border-gray-200'} backdrop-blur-sm transition-all duration-300 hover:scale-105 hover:border-yellow-500/50`}>
                                 <div className="text-4xl mb-3 transition-transform duration-300 hover:scale-110">🔒</div>
                                 <h3 className={`font-semibold mb-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>End-to-End Encrypted</h3>
                                 <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>Your messages are private</p>
                             </div>
-                            <div className={`p-6 rounded-2xl ${isDarkMode ? 'bg-gray-800/50 border border-gray-700' : 'bg-white/50 border border-gray-200'} backdrop-blur-sm transition-all duration-300 hover:scale-105 hover:border-yellow-500/50 animate-float`} style={{ animationDelay: '1s' }}>
+                            <div className={`p-6 rounded-2xl ${isDarkMode ? 'bg-gray-800/50 border border-gray-700' : 'bg-white/50 border border-gray-200'} backdrop-blur-sm transition-all duration-300 hover:scale-105 hover:border-yellow-500/50`}>
                                 <div className="text-4xl mb-3 transition-transform duration-300 hover:scale-110">🎥</div>
                                 <h3 className={`font-semibold mb-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>HD Video Chat</h3>
                                 <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>Crystal clear video calls</p>
                             </div>
-                            <div className={`p-6 rounded-2xl ${isDarkMode ? 'bg-gray-800/50 border border-gray-700' : 'bg-white/50 border border-gray-200'} backdrop-blur-sm transition-all duration-300 hover:scale-105 hover:border-yellow-500/50 animate-float`} style={{ animationDelay: '2s' }}>
+                            <div className={`p-6 rounded-2xl ${isDarkMode ? 'bg-gray-800/50 border border-gray-700' : 'bg-white/50 border border-gray-200'} backdrop-blur-sm transition-all duration-300 hover:scale-105 hover:border-yellow-500/50`}>
                                 <div className="text-4xl mb-3 transition-transform duration-300 hover:scale-110">🌍</div>
                                 <h3 className={`font-semibold mb-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Global Reach</h3>
                                 <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>Connect worldwide</p>
