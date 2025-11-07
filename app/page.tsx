@@ -45,6 +45,12 @@ export default function Home() {
     const [remoteAudioVolume, setRemoteAudioVolume] = useState(100) // 0-100
     const [showAudioControls, setShowAudioControls] = useState(false)
 
+    // Camera control state
+    const [isLocalCameraEnabled, setIsLocalCameraEnabled] = useState(true)
+
+    // Report state
+    const [showReportModal, setShowReportModal] = useState(false)
+
     const userId = useRef(uuidv4())
     const localVideoRef = useRef<HTMLVideoElement>(null)
     const remoteVideoRef = useRef<HTMLVideoElement>(null)
@@ -767,6 +773,39 @@ export default function Home() {
         }
     }
 
+    // Camera toggle function
+    const toggleCamera = () => {
+        if (localStreamRef.current) {
+            const videoTracks = localStreamRef.current.getVideoTracks()
+            const newCameraState = !isLocalCameraEnabled
+            videoTracks.forEach(track => {
+                track.enabled = newCameraState
+            })
+            setIsLocalCameraEnabled(newCameraState)
+            console.log(newCameraState ? '📹 Camera enabled' : '📹 Camera disabled')
+        }
+    }
+
+    // Report function
+    const handleReport = () => {
+        setShowReportModal(true)
+    }
+
+    const confirmReport = () => {
+        if (socket && strangerId) {
+            // In a real app, you'd send this to your backend for moderation
+            console.log('🚨 Report submitted for user:', strangerId)
+            // For now, just show a confirmation and disconnect
+            alert('Thank you for reporting. The user has been reported and you will be disconnected.')
+            disconnect()
+        }
+        setShowReportModal(false)
+    }
+
+    const cancelReport = () => {
+        setShowReportModal(false)
+    }
+
     // Socket.io connection
     useEffect(() => {
         const newSocket = io(process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3001')
@@ -787,6 +826,8 @@ export default function Home() {
             setIsLocalAudioMuted(false)
             setLocalAudioVolume(100)
             setRemoteAudioVolume(100)
+            // Reset camera state
+            setIsLocalCameraEnabled(true)
             stopVideo()
         })
 
@@ -1069,6 +1110,8 @@ export default function Home() {
             setIsLocalAudioMuted(false)
             setLocalAudioVolume(100)
             setRemoteAudioVolume(100)
+            // Reset camera state
+            setIsLocalCameraEnabled(true)
             stopVideo()
             setMessages([{ id: uuidv4(), text: 'Stranger disconnected', sender: 'stranger' }])
         })
@@ -1117,6 +1160,8 @@ export default function Home() {
             setIsLocalAudioMuted(false)
             setLocalAudioVolume(100)
             setRemoteAudioVolume(100)
+            // Reset camera state
+            setIsLocalCameraEnabled(true)
             stopVideo()
         }
     }
@@ -1136,6 +1181,8 @@ export default function Home() {
             setIsLocalAudioMuted(false)
             setLocalAudioVolume(100)
             setRemoteAudioVolume(100)
+            // Reset camera state
+            setIsLocalCameraEnabled(true)
             stopVideo()
             
             // Automatically search for next stranger
@@ -1199,7 +1246,23 @@ export default function Home() {
                         </div>
                     </div>
 
-                    <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-3">
+                        {/* Report Button - Only show when matched */}
+                        {isMatched && (
+                            <button
+                                onClick={handleReport}
+                                className={`p-2.5 rounded-xl transition-all duration-200 hover:scale-110 active:scale-95 ${isDarkMode
+                                    ? 'bg-red-600/80 hover:bg-red-500 text-white border border-red-500/50'
+                                    : 'bg-red-500/80 hover:bg-red-400 text-white border border-red-400/50'
+                                    } shadow-lg`}
+                                title="Report inappropriate content"
+                            >
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                </svg>
+                            </button>
+                        )}
+
                         {/* Connection Status */}
                         <div className={`flex items-center gap-2 px-4 py-2 rounded-full ${isDarkMode ? 'bg-gray-800' : 'bg-gray-100'} ${isDarkMode ? 'border border-gray-700' : 'border border-gray-200'}`}>
                             <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'} animate-pulse`}></div>
@@ -1711,8 +1774,22 @@ export default function Home() {
 
                     {isMatched && (
                         <>
-                            {/* Audio Controls */}
+                            {/* Audio & Camera Controls */}
                             <div className={`flex flex-col sm:flex-row items-center gap-4 px-6 py-4 rounded-xl ${isDarkMode ? 'bg-gray-800/80 border border-gray-700' : 'bg-white/80 border border-gray-200'} backdrop-blur-sm shadow-lg`}>
+                                {/* Camera Toggle */}
+                                <div className="flex items-center gap-3">
+                                    <button
+                                        onClick={toggleCamera}
+                                        className={`p-3 rounded-lg transition-all duration-200 hover:scale-110 active:scale-95 ${isLocalCameraEnabled
+                                            ? isDarkMode ? 'bg-blue-600/80 hover:bg-blue-500 text-white' : 'bg-blue-500/80 hover:bg-blue-400 text-white'
+                                            : isDarkMode ? 'bg-gray-600/80 hover:bg-gray-500 text-white' : 'bg-gray-400/80 hover:bg-gray-300 text-white'
+                                            }`}
+                                        title={isLocalCameraEnabled ? 'Turn off camera' : 'Turn on camera'}
+                                    >
+                                        {isLocalCameraEnabled ? '📹' : '📷'}
+                                    </button>
+                                </div>
+
                                 {/* Local Audio Controls */}
                                 <div className="flex items-center gap-3">
                                     <button
@@ -1798,6 +1875,49 @@ export default function Home() {
                         </>
                     )}
                 </div>
+
+                {/* Report Modal */}
+                {showReportModal && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+                        <div className={`max-w-md w-full rounded-2xl shadow-2xl ${isDarkMode ? 'bg-gray-800 border border-gray-700' : 'bg-white border border-gray-200'}`}>
+                            <div className="p-6">
+                                <div className="flex items-center gap-3 mb-4">
+                                    <div className={`p-3 rounded-full ${isDarkMode ? 'bg-red-600/20' : 'bg-red-100'}`}>
+                                        <svg className={`w-6 h-6 ${isDarkMode ? 'text-red-400' : 'text-red-600'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                        </svg>
+                                    </div>
+                                    <h3 className={`text-xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                                        Report User
+                                    </h3>
+                                </div>
+                                <p className={`mb-6 ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                    Are you sure you want to report this user for inappropriate content? This action will disconnect you from the current call.
+                                </p>
+                                <div className="flex gap-3">
+                                    <button
+                                        onClick={cancelReport}
+                                        className={`flex-1 px-4 py-2.5 rounded-xl font-semibold transition-all duration-200 ${isDarkMode
+                                            ? 'bg-gray-700 hover:bg-gray-600 text-white'
+                                            : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
+                                            }`}
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        onClick={confirmReport}
+                                        className={`flex-1 px-4 py-2.5 rounded-xl font-semibold transition-all duration-200 ${isDarkMode
+                                            ? 'bg-red-600 hover:bg-red-500 text-white'
+                                            : 'bg-red-500 hover:bg-red-400 text-white'
+                                            }`}
+                                    >
+                                        Report
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
 
                 {/* Footer */}
                 <div className={`mt-12 text-center ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>
