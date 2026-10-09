@@ -53,7 +53,6 @@ export function PrivacyDiagramV2() {
                     <stop offset="1" stopColor={TEAL} stopOpacity="0" />
                 </radialGradient>
             </defs>
-            <rect x="0" y="0" width="640" height="330" fill="url(#pv-spot)" />
 
             {/* Server: introduces you, then cannot see anything */}
             <g transform="translate(240 22)">
