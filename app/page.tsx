@@ -127,8 +127,13 @@ export default function Home() {
     // Shown when video cannot get through between the two networks
     const [connIssue, setConnIssue] = useState(false)
     // Safe start: a new stranger's video stays blurred until you choose to see it
-    const [safeStart, setSafeStart] = useState(true)
-    const safeStartRef = useRef(true)
+    const [safeStart, setSafeStart] = useState(false)
+    const safeStartRef = useRef(false)
+    // Privacy for yourself: each chat starts with your camera blurred until you tap Show me
+    const [selfHidden, setSelfHidden] = useState(false)
+    const selfHiddenRef = useRef(false)
+    const [startHidden, setStartHidden] = useState(true)
+    const startHiddenRef = useRef(true)
     const [remoteHidden, setRemoteHidden] = useState(true)
     const [cameraState, setCameraState] = useState<'idle' | 'asking' | 'ready' | 'denied'>('idle')
 
@@ -841,7 +846,7 @@ export default function Home() {
             localStreamRef.current = stream
             const rawVideo = stream.getVideoTracks()[0]
             let outVideo = rawVideo
-            if (rawVideo && (filterRef.current !== 'none' || bgRef.current !== 'none')) {
+            if (rawVideo && (filterRef.current !== 'none' || bgRef.current !== 'none' || selfHiddenRef.current)) {
                 if (FILTERS[filterRef.current].face) await ensureFaceTracker()
                 if (bgRef.current !== 'none') await ensureSegmenter()
                 const built = buildFilteredTrack(rawVideo)
@@ -1021,7 +1026,7 @@ export default function Home() {
             cctx.drawImage(person, 0, 0)
         }
 
-        const draw = () => {
+        const drawEffect = () => {
             if (video.readyState < 2 || !fitToVideo()) return
             const f = filterRef.current
             const bg = bgRef.current
@@ -1089,6 +1094,30 @@ export default function Home() {
             ctx.filter = 'none'
             markReady()
         }
+        // Self-blur sits on top of everything else and is applied before sending
+        const hideBuf = document.createElement('canvas')
+        const hctx = hideBuf.getContext('2d')!
+        const draw = () => {
+            drawEffect()
+            if (!selfHiddenRef.current || !w) return
+            if (CANVAS_FILTERS) {
+                if (hideBuf.width !== w || hideBuf.height !== h) {
+                    hideBuf.width = w
+                    hideBuf.height = h
+                }
+                hctx.drawImage(canvas, 0, 0)
+                ctx.filter = 'blur(28px)'
+                ctx.drawImage(hideBuf, -30, -30, w + 60, h + 60)
+                ctx.filter = 'none'
+            } else {
+                small.width = Math.max(1, Math.round(w / 28))
+                small.height = Math.max(1, Math.round(h / 28))
+                sctx.drawImage(canvas, 0, 0, small.width, small.height)
+                ctx.imageSmoothingEnabled = false
+                ctx.drawImage(small, 0, 0, w, h)
+                ctx.imageSmoothingEnabled = true
+            }
+        }
         const timer = setInterval(draw, 1000 / 24)
         const track = canvas.captureStream(24).getVideoTracks()[0]
         filterPipeRef.current = { timer, track, video, renderer: null }
@@ -1132,7 +1161,7 @@ export default function Home() {
         const raw = localStreamRef.current?.getVideoTracks()[0]
         if (!raw) return
         const sender = peerConnectionRef.current?.getSenders().find((x) => x.track?.kind === 'video')
-        const needed = filterRef.current !== 'none' || bgRef.current !== 'none'
+        const needed = filterRef.current !== 'none' || bgRef.current !== 'none' || selfHiddenRef.current
         const pipe = filterPipeRef.current
         if (!needed) {
             if (!pipe) return
@@ -1140,7 +1169,7 @@ export default function Home() {
             setLocalPreview(new MediaStream([raw]))
             // Let the preview switch first, then tear the canvas down
             setTimeout(() => {
-                if (filterRef.current === 'none' && bgRef.current === 'none') stopFilterPipe()
+                if (filterRef.current === 'none' && bgRef.current === 'none' && !selfHiddenRef.current) stopFilterPipe()
             }, 300)
             return
         }
@@ -1155,7 +1184,7 @@ export default function Home() {
         // Build in the background and keep sending the camera until the first frame is ready
         const { track, ready } = buildFilteredTrack(raw)
         await settle(ready)
-        if (filterRef.current === 'none' && bgRef.current === 'none') return
+        if (filterRef.current === 'none' && bgRef.current === 'none' && !selfHiddenRef.current) return
         await sender?.replaceTrack(track)
         setLocalPreview(new MediaStream([track]))
     }
@@ -1365,6 +1394,8 @@ export default function Home() {
             iceServersRef.current = Array.isArray(data.iceServers) ? data.iceServers : []
             setConnIssue(false)
             setRemoteHidden(safeStartRef.current)
+            selfHiddenRef.current = startHiddenRef.current
+            setSelfHidden(startHiddenRef.current)
             console.log('✅ Matched with:', data.strangerId)
             setIsSearching(false)
             setIsMatched(true)
@@ -1856,7 +1887,11 @@ export default function Home() {
     // Remember the safe start choice
     useEffect(() => {
         try {
-            const v = localStorage.getItem('sc-safe-start') !== 'off'
+            const hiddenPref = localStorage.getItem('sc-start-hidden') !== 'off'
+            setStartHidden(hiddenPref)
+            startHiddenRef.current = hiddenPref
+            // Blurring strangers is now opt-in
+            const v = localStorage.getItem('sc-safe-start') === 'on'
             setSafeStart(v)
             safeStartRef.current = v
         } catch {
@@ -1928,6 +1963,28 @@ export default function Home() {
         const t = setTimeout(() => setSlowSearch(true), 7000)
         return () => clearTimeout(t)
     }, [isSearching])
+
+    const showMe = async () => {
+        selfHiddenRef.current = false
+        setSelfHidden(false)
+        await applyVideoPipeline()
+    }
+
+    const hideMe = async () => {
+        selfHiddenRef.current = true
+        setSelfHidden(true)
+        await applyVideoPipeline()
+    }
+
+    const toggleStartHidden = (on: boolean) => {
+        setStartHidden(on)
+        startHiddenRef.current = on
+        try {
+            localStorage.setItem('sc-start-hidden', on ? 'on' : 'off')
+        } catch {
+            // ignore
+        }
+    }
 
     const toggleSafeStart = (on: boolean) => {
         setSafeStart(on)
@@ -2068,7 +2125,8 @@ export default function Home() {
                             bottom: isLocalMain ? 'auto' : '0',
                             zIndex: isLocalMain ? 20 : 15,
                             pointerEvents: isMatched ? 'auto' : 'none',
-                            cursor: remoteVideoDragging ? 'grabbing' : 'grab'
+                            // iOS only delivers taps to elements that look clickable
+                            cursor: isLocalMain ? 'pointer' : remoteVideoDragging ? 'grabbing' : remoteVideoZoom > 1 ? 'grab' : 'default'
                         }}
                         onClick={(e) => {
                             // Only swap if not dragging or zooming
@@ -2277,7 +2335,7 @@ export default function Home() {
                                 bottom: isLocalMain ? '0' : 'auto',
                                 zIndex: isLocalMain ? 15 : 20,
                                 pointerEvents: 'auto',
-                                cursor: localVideoDragging ? 'grabbing' : 'grab'
+                                cursor: !isLocalMain ? 'pointer' : localVideoDragging ? 'grabbing' : localVideoZoom > 1 ? 'grab' : 'default'
                             }}
                             onClick={(e) => {
                                 // Only swap if not dragging or zooming
@@ -2431,6 +2489,20 @@ export default function Home() {
                                 </div>
                             </div>
                         )}
+                        {isMatched && (
+                            <div className="absolute left-3.5 top-[3.25rem] z-30 animate-fade-in">
+                                {selfHidden ? (
+                                    <button onClick={showMe} className="flex items-center gap-2 rounded-full border border-glow/40 bg-black/55 py-1.5 pl-3 pr-1.5 text-[12px] text-paper backdrop-blur-md hover:border-glow/70">
+                                        <span>You are blurred to them</span>
+                                        <span className="rounded-full bg-paper px-2.5 py-1 text-[11.5px] font-medium text-ink-900">Show me</span>
+                                    </button>
+                                ) : (
+                                    <button onClick={hideMe} className="rounded-full bg-black/45 px-3 py-1.5 text-[11.5px] text-paper-dim backdrop-blur-md hover:text-paper">
+                                        Blur me
+                                    </button>
+                                )}
+                            </div>
+                        )}
                         {isMatched && connIssue && (
                             <div className="absolute inset-0 z-[26] flex items-center justify-center bg-ink-900/85 backdrop-blur-md animate-fade-in">
                                 <div className="max-w-sm px-6 text-center">
@@ -2457,7 +2529,7 @@ export default function Home() {
                             </div>
                         )}
                         {isMatched && (videoFilter !== 'none' || background !== 'none') && (
-                            <div className="pointer-events-none absolute left-3.5 top-12 z-30 rounded-full bg-black/45 backdrop-blur-md px-3 py-1 font-mono text-[10.5px] text-glow-soft animate-fade-in">
+                            <div className="pointer-events-none absolute left-3.5 top-[5.5rem] z-30 rounded-full bg-black/45 backdrop-blur-md px-3 py-1 font-mono text-[10.5px] text-glow-soft animate-fade-in">
                                 {[videoFilter !== 'none' ? FILTERS[videoFilter].label : null, background !== 'none' ? BACKGROUNDS.find((b) => b.id === background)?.label : null].filter(Boolean).join(' · ')}
                             </div>
                         )}
@@ -2526,6 +2598,12 @@ export default function Home() {
                                                           </PickerItem>
                                                       ))}
                                         </PickerRail>
+                                        {filterTab === 'privacy' && (
+                                            <div className="mt-2 space-y-1 border-t border-paper/10 px-2 pt-2">
+                                                <PrivacyToggle label="Start every chat blurred" hint="They see you blurred until you tap Show me" on={startHidden} onChange={toggleStartHidden} />
+                                                <PrivacyToggle label="Blur strangers until I tap" hint="Hide their video when a new chat starts" on={safeStart} onChange={toggleSafeStart} />
+                                            </div>
+                                        )}
                                         <input
                                             ref={bgInputRef}
                                             type="file"
@@ -2998,6 +3076,20 @@ function PickerRail({ children, resetKey }: { children: React.ReactNode; resetKe
             </div>
             {edges.right && <Arrow dir={1} />}
         </div>
+    )
+}
+
+function PrivacyToggle({ label, hint, on, onChange }: { label: string; hint: string; on: boolean; onChange: (v: boolean) => void }) {
+    return (
+        <button onClick={() => onChange(!on)} className="flex w-full items-center justify-between gap-3 rounded-xl px-2 py-1.5 text-left hover:bg-paper/5" role="switch" aria-checked={on}>
+            <span>
+                <span className="block text-[12.5px] text-paper">{label}</span>
+                <span className="block text-[11px] text-paper-faint">{hint}</span>
+            </span>
+            <span className={`relative h-5 w-9 shrink-0 rounded-full transition ${on ? 'bg-emerald-400/80' : 'bg-paper/15'}`}>
+                <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all ${on ? 'left-[18px]' : 'left-0.5'}`} />
+            </span>
+        </button>
     )
 }
 
