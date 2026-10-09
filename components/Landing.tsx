@@ -75,7 +75,7 @@ export default function Landing({ onStart, isConnected }: Props) {
                     </h1>
                     <p className="rise mx-auto mt-7 max-w-xl text-[17px] leading-relaxed text-paper-dim" style={{ ['--delay' as string]: '0.16s' }}>
                         One click puts you face to face with a stranger anywhere in the world. No sign-up, no app,
-                        no feed. Just a conversation, sent peer-to-peer. The Omegle alternative, rebuilt with care.
+                        no feed. Just a private conversation, straight between you. Random video chat, rebuilt with care.
                     </p>
                     <div className="rise mt-9 flex flex-col sm:flex-row items-center justify-center gap-3" style={{ ['--delay' as string]: '0.24s' }}>
                         <StartButton onStart={onStart} isConnected={isConnected} />
@@ -97,7 +97,7 @@ export default function Landing({ onStart, isConnected }: Props) {
             <section aria-label="At a glance" className="border-y border-paper/10">
                 <ul className="mx-auto max-w-page px-4 sm:px-6 grid grid-cols-2 md:grid-cols-4">
                     {[
-                        ['P2P', 'Video goes direct, browser to browser'],
+                        ['Private', 'Only the two of you can see the call'],
                         ['No', 'Account, email or phone number'],
                         ['1 click', 'To skip to the next person'],
                         ['0', 'Messages or calls stored, ever'],
@@ -158,20 +158,20 @@ export default function Landing({ onStart, isConnected }: Props) {
             <section id="privacy" data-scene="privacy" className="border-y border-paper/10 bg-ink-850/60 scroll-mt-24">
                 <div className="mx-auto max-w-page px-4 sm:px-6 py-24 sm:py-32 grid lg:grid-cols-[1fr_1.15fr] gap-14 items-center">
                     <div>
-                        <Eyebrow>Privacy by architecture</Eyebrow>
+                        <Eyebrow>Private by design</Eyebrow>
                         <h2 className="mt-4 font-serif text-4xl sm:text-5xl leading-[1.05] tracking-[-0.01em]">
-                            Your face never <em className="text-glow-soft">touches our server.</em>
+                            Only the two of you <em className="text-glow-soft">can see the call.</em>
                         </h2>
                         <p className="mt-6 text-[17px] leading-relaxed text-paper-dim max-w-lg">
-                            Strangers Connect is built on WebRTC. Our server introduces two browsers, then steps out of the way.
+                            Our server simply introduces you to someone new, then steps out of the way.
                             Video and audio flow directly between you, encrypted in transit.
                         </p>
                         <ul className="mt-8 space-y-4 text-[15px]">
                             {[
-                                ['Encrypted media', 'Every call uses DTLS-SRTP, the encryption standard built into every WebRTC call.'],
+                                ['Locked calls', 'Video, voice and chat are encrypted on your device. Only you and the other person can unlock them.'],
                                 ['Encrypted chat', 'Messages are encrypted in your browser with a fresh key for every match. The server only ever sees scrambled text.'],
                                 ['Safety code', 'Both of you see the same six digits. Read them aloud: if they match, nobody is in the middle.'],
-                                ['Nothing saved', 'No recordings, no chat history, no database. Close the tab and it is gone.'],
+                                ['Nothing saved', 'No recordings, no chat history, no profiles. Close the tab and it is gone.'],
                                 ['No identity', 'No account, no email, no profile. IP addresses are never stored, only a one-way hash if someone is banned.'],
                                 ['Community safety', 'One-tap reporting. Repeated reports trigger an automatic ban.'],
                             ].map(([t, d]) => (
@@ -234,7 +234,7 @@ export default function Landing({ onStart, isConnected }: Props) {
                     <div>
                         <Eyebrow>Questions</Eyebrow>
                         <h2 className="mt-4 font-serif text-4xl sm:text-5xl leading-[1.05] tracking-[-0.01em]">
-                            Looking for an <em className="text-glow-soft">Omegle alternative?</em>
+                            Before you <em className="text-glow-soft">say hello.</em>
                         </h2>
                         <p className="mt-6 text-paper-mute max-w-sm">
                             Everything you might want to know before you say hello to a stranger.

@@ -111,6 +111,15 @@ export default function Home() {
     const [rematchAnswer, setRematchAnswer] = useState<'yes' | 'no' | null>(null)
     const [strangerTyping, setStrangerTyping] = useState(false)
     const [showSafety, setShowSafety] = useState(false)
+    // Relay servers handed out by the signaling server on each match
+    const iceServersRef = useRef<RTCIceServer[]>([])
+    // Shown when video cannot get through between the two networks
+    const [connIssue, setConnIssue] = useState(false)
+    // Safe start: a new stranger's video stays blurred until you choose to see it
+    const [safeStart, setSafeStart] = useState(true)
+    const safeStartRef = useRef(true)
+    const [remoteHidden, setRemoteHidden] = useState(true)
+    const [cameraState, setCameraState] = useState<'idle' | 'asking' | 'ready' | 'denied'>('idle')
 
     // Privacy filters run on this device before video is sent, so the raw face never leaves it
     const [videoFilter, setVideoFilter] = useState<VideoFilter>('none')
@@ -352,9 +361,8 @@ export default function Home() {
                         credential: process.env.NEXT_PUBLIC_TURN_CREDENTIAL,
                     }]
                     : []),
-                // Note: TURN servers removed due to timeout issues
-                // For production, you'll need to set up your own TURN server
-                // STUN-only should work for same-network connections
+                // Relay (TURN) from our signaling server, for networks that block direct calls
+                ...iceServersRef.current,
             ],
             iceTransportPolicy: 'all', // Try all connection types
         })
@@ -367,6 +375,8 @@ export default function Home() {
         pc.oniceconnectionstatechange = () => {
             const state = pc.iceConnectionState
             console.log('🧊 iceConnectionState =', state)
+            if (state === 'connected' || state === 'completed') setConnIssue(false)
+            if (state === 'failed') setConnIssue(true)
             if (state === 'failed' || state === 'disconnected') {
                 console.error('❌ ICE connection failed/disconnected!')
                 console.error('📊 Connection details:', {
@@ -809,18 +819,10 @@ export default function Home() {
         }
 
         try {
-            console.log('📷 Requesting camera access...')
-            const stream = await navigator.mediaDevices.getUserMedia({
-                video: {
-                    width: { ideal: 1280 },
-                    height: { ideal: 720 },
-                    facingMode: 'user'
-                },
-                audio: {
-                    echoCancellation: true,
-                    noiseSuppression: true
-                },
-            })
+            // Camera is normally opened before searching; open it now only if it is not live
+            const existing = localStreamRef.current
+            const stream = existing && existing.getTracks().every((t) => t.readyState === 'live') ? existing : await openCamera()
+            if (!stream) return
             console.log('✅ Got camera access')
             console.log('📹 Video tracks:', stream.getVideoTracks().length)
             console.log('🎤 Audio tracks:', stream.getAudioTracks().length)
@@ -1348,7 +1350,10 @@ export default function Home() {
             stopVideo()
         })
 
-        newSocket.on('matched', async (data: { strangerId: string }) => {
+        newSocket.on('matched', async (data: { strangerId: string; iceServers?: RTCIceServer[] }) => {
+            iceServersRef.current = Array.isArray(data.iceServers) ? data.iceServers : []
+            setConnIssue(false)
+            setRemoteHidden(safeStartRef.current)
             console.log('✅ Matched with:', data.strangerId)
             setIsSearching(false)
             setIsMatched(true)
@@ -1731,13 +1736,40 @@ export default function Home() {
         findStranger()
     }
 
-    const findStranger = () => {
-        if (socket) {
-            window.scrollTo({ top: 0, behavior: 'smooth' })
-            setCallEnded(null)
-            setIsSearching(true)
-            socket.emit('find-stranger')
+    const openCamera = async (): Promise<MediaStream | null> => {
+        setCameraState('asking')
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
+                audio: { echoCancellation: true, noiseSuppression: true },
+            })
+            setCameraState('ready')
+            return stream
+        } catch (error) {
+            console.error('Camera unavailable:', error)
+            setCameraState('denied')
+            return null
         }
+    }
+
+    // Open the camera first, so the person you meet never waits on a permission prompt
+    const findStranger = async () => {
+        if (!socket) return
+        window.scrollTo({ top: 0, behavior: 'smooth' })
+        setCallEnded(null)
+        setIsSearching(true)
+        const live = localStreamRef.current?.getTracks().every((t) => t.readyState === 'live')
+        if (!live) {
+            const stream = await openCamera()
+            if (!stream) {
+                setIsSearching(false)
+                setNotice('Camera access is needed to video chat. Allow it in your browser settings and try again.')
+                return
+            }
+            localStreamRef.current = stream
+            setLocalPreview(new MediaStream(stream.getVideoTracks()))
+        }
+        socket.emit('find-stranger')
     }
 
     const disconnect = () => {
@@ -1764,7 +1796,7 @@ export default function Home() {
         }
     }
 
-    // Skip to next stranger (like Omegle)
+    // Skip to the next stranger
     const skipStranger = () => {
         if (socket && strangerId) {
             // Disconnect from current stranger
@@ -1789,20 +1821,52 @@ export default function Home() {
 
             // Automatically search for next stranger
             setTimeout(() => {
-                setIsSearching(true)
-                socket.emit('find-stranger')
+                findStranger()
             }, 100) // Small delay to ensure cleanup completes
         }
     }
 
     useEffect(() => {
+        if (!isMatched || remoteVideoReady) return
+        const t = setTimeout(() => setConnIssue(true), 20000)
+        return () => clearTimeout(t)
+    }, [isMatched, remoteVideoReady])
+
+    useEffect(() => {
+        if (remoteVideoReady) setConnIssue(false)
+    }, [remoteVideoReady])
+
+    // Remember the safe start choice
+    useEffect(() => {
+        try {
+            const v = localStorage.getItem('sc-safe-start') !== 'off'
+            setSafeStart(v)
+            safeStartRef.current = v
+        } catch {
+            // ignore
+        }
+    }, [])
+
+    useEffect(() => {
         if (!isMatched) {
             setShowSafety(false)
+            setConnIssue(false)
             setOpenPanel('none')
             setShowEmojiPicker(false)
             setFloaters([])
         }
     }, [isMatched])
+
+    const toggleSafeStart = (on: boolean) => {
+        setSafeStart(on)
+        safeStartRef.current = on
+        if (!on) setRemoteHidden(false)
+        try {
+            localStorage.setItem('sc-safe-start', on ? 'on' : 'off')
+        } catch {
+            // ignore
+        }
+    }
 
     const answerRematch = (answer: 'yes' | 'no') => {
         setRematchAnswer(answer)
@@ -1812,6 +1876,10 @@ export default function Home() {
     const cancelSearch = () => {
         socket?.emit('cancel-search')
         setIsSearching(false)
+        localStreamRef.current?.getTracks().forEach((t) => t.stop())
+        localStreamRef.current = null
+        setLocalPreview(null)
+        setCameraState('idle')
     }
 
     // Tell the stranger we are typing, at most once every 2 seconds
@@ -2043,6 +2111,9 @@ export default function Home() {
                                 muted={false}
                                 className="w-full h-full object-cover bg-black"
                                 style={{
+                                    // Safe start: blurred until the viewer chooses to see the stranger
+                                    filter: remoteHidden ? 'blur(36px) saturate(0.8)' : 'none',
+                                    transition: 'filter 0.4s ease',
                                     width: '100%',
                                     height: '100%',
                                     display: isMatched ? 'block' : 'none',
@@ -2104,9 +2175,10 @@ export default function Home() {
                         return !hasSrcObject && !remoteVideoReady && isMatched
                     })() && (
                             <div className={`absolute inset-0 flex items-center justify-center z-10 bg-ink-900/90 backdrop-blur-sm`}>
-                                <div className="text-center">
-                                    <div className="mx-auto mb-4 flex justify-center"><SearchRings /></div>
-                                    <p className="text-paper-dim text-sm">Connecting video…</p>
+                                <div className="px-6 text-center">
+                                    <p className="font-serif text-2xl">You are matched.</p>
+                                    <p className="mt-2 text-sm text-paper-mute">Connecting video with your stranger. This takes a few seconds.</p>
+                                    <p className="mt-1 text-xs text-paper-faint">You can already say hi in the chat.</p>
                                 </div>
                             </div>
                         )}
@@ -2266,6 +2338,36 @@ export default function Home() {
                         </div>
                     )}
                 </div>
+                        {isMatched && remoteHidden && !isLocalMain && !connIssue && (
+                            <div className="absolute inset-0 z-[18] flex items-center justify-center bg-ink-900/30 animate-fade-in">
+                                <div className="px-6 text-center">
+                                    <p className="font-mono text-[10.5px] uppercase tracking-[0.2em] text-paper-mute">Safe start</p>
+                                    <p className="mt-2 font-serif text-2xl">Video hidden until you are ready</p>
+                                    <button onClick={() => setRemoteHidden(false)} className="btn-primary mt-5 px-6 py-3 text-sm">
+                                        Show video
+                                    </button>
+                                    <button onClick={() => toggleSafeStart(false)} className="mt-3 block w-full text-xs text-paper-faint underline-offset-4 hover:text-paper hover:underline">
+                                        Always show strangers right away
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                        {isMatched && connIssue && (
+                            <div className="absolute inset-0 z-[26] flex items-center justify-center bg-ink-900/85 backdrop-blur-md animate-fade-in">
+                                <div className="max-w-sm px-6 text-center">
+                                    <p className="font-serif text-2xl">Video could not connect</p>
+                                    <p className="mt-2 text-sm leading-relaxed text-paper-mute">
+                                        Your networks are not letting the video through right now. This happens sometimes between countries or on mobile data.
+                                    </p>
+                                    <div className="mt-5 flex flex-col items-center gap-2">
+                                        <button onClick={skipStranger} className="btn-primary px-6 py-3 text-sm">Find someone else</button>
+                                        <button onClick={() => setConnIssue(false)} className="text-xs text-paper-faint underline-offset-4 hover:text-paper hover:underline">
+                                            Keep waiting
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                         {isMatched && (
                             <div className="pointer-events-none absolute inset-0 z-30 overflow-hidden" aria-hidden="true">
                                 {floaters.map((f) => (
@@ -2288,7 +2390,7 @@ export default function Home() {
                         {isMatched && (
                             <div className="pointer-events-none absolute left-3.5 top-3.5 z-30 flex items-center gap-2 rounded-full bg-black/45 backdrop-blur-md px-3 py-1.5 font-mono text-[10.5px] text-paper-dim animate-fade-in">
                                 <span className="h-1.5 w-1.5 rounded-full bg-glow breathe" />
-                                <span className="hidden sm:inline">live · peer-to-peer · </span>encrypted
+                                <span className="hidden sm:inline">live · private · </span>encrypted
                             </div>
                         )}
 
@@ -2586,7 +2688,14 @@ export default function Home() {
             {/* Searching */}
             {isSearching && (
                 <section className="relative z-10 mx-auto max-w-page px-4 sm:px-6 py-16 sm:py-24 flex flex-col items-center text-center rise" aria-live="polite">
-                    <Orbit />
+                    {cameraState === 'asking' ? (
+                        <div className="max-w-sm">
+                            <p className="font-serif text-3xl">Allow your camera</p>
+                            <p className="mt-3 text-paper-mute">Your browser will ask once. Nothing is uploaded to us: video goes straight to the person you meet.</p>
+                        </div>
+                    ) : (
+                        <Orbit />
+                    )}
                     <p className="mt-6 font-mono text-[11px] uppercase tracking-[0.22em] text-paper-mute">Matching</p>
                     <h2 className="mt-3 font-serif text-4xl sm:text-5xl">
                         Finding <em className="text-glow-soft">someone new…</em>
@@ -2596,6 +2705,11 @@ export default function Home() {
                         <div className="mt-8">
                             <RematchQuestion answer={rematchAnswer} onAnswer={answerRematch} />
                         </div>
+                    )}
+                    {cameraState === 'denied' && (
+                        <p className="mt-6 max-w-sm text-sm text-danger">
+                            Camera access was blocked. Allow it in your browser&apos;s site settings, then press Start again.
+                        </p>
                     )}
                     <button onClick={cancelSearch} className="btn-ghost mt-8 px-5 py-2.5 text-sm text-paper-mute">
                         Cancel

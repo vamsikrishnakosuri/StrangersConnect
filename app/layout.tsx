@@ -69,7 +69,7 @@ const jsonLd = {
             url: SITE_URL,
             applicationCategory: 'SocialNetworkingApplication',
             operatingSystem: 'Any (web browser)',
-            browserRequirements: 'Requires a browser with WebRTC, camera and microphone access',
+            browserRequirements: 'Requires a modern browser with camera and microphone access',
             isAccessibleForFree: true,
             offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
             description: SITE_DESCRIPTION,

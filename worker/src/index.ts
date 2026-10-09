@@ -12,6 +12,10 @@ import { DurableObject } from 'cloudflare:workers'
 export interface Env {
     LOBBY: DurableObjectNamespace<Lobby>
     HASH_SALT: string // secret: `wrangler secret put HASH_SALT`
+    // Cloudflare Realtime TURN key (dashboard > Realtime > TURN). Optional: without it,
+    // calls still work on most networks, just not through strict firewalls.
+    TURN_KEY_ID?: string
+    TURN_KEY_API_TOKEN?: string
     ALLOWED_ORIGINS?: string // comma separated, optional override
 }
 
@@ -90,6 +94,7 @@ export class Lobby extends DurableObject<Env> {
     // from the socket attachments, which do survive.
     private userIndex = new Map<string, WebSocket>()
     private waiting = new Set<WebSocket>()
+    private turnCache: { servers: unknown[]; at: number } | null = null
 
     constructor(ctx: DurableObjectState, env: Env) {
         super(ctx, env)
@@ -219,7 +224,30 @@ export class Lobby extends DurableObject<Env> {
         }
     }
 
-    private tryMatch(ws: WebSocket) {
+    // Short-lived relay credentials, shared by everyone and refreshed every two hours.
+    // Only handed to sockets that have just been matched, so they cannot be scraped freely.
+    private async iceServers(): Promise<unknown[]> {
+        const { TURN_KEY_ID, TURN_KEY_API_TOKEN } = this.env
+        if (!TURN_KEY_ID || !TURN_KEY_API_TOKEN) return []
+        if (this.turnCache && Date.now() - this.turnCache.at < 2 * 3600 * 1000) return this.turnCache.servers
+        try {
+            const res = await fetch(`https://rtc.live.cloudflare.com/v1/turn/keys/${TURN_KEY_ID}/credentials/generate-ice-servers`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${TURN_KEY_API_TOKEN}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ttl: 6 * 3600 }),
+            })
+            if (!res.ok) throw new Error(`TURN ${res.status}`)
+            const body = (await res.json()) as { iceServers?: unknown }
+            const list = Array.isArray(body.iceServers) ? body.iceServers : body.iceServers ? [body.iceServers] : []
+            this.turnCache = { servers: list, at: Date.now() }
+            return list
+        } catch (error) {
+            console.error('turn credentials unavailable', String(error))
+            return this.turnCache?.servers ?? []
+        }
+    }
+
+    private async tryMatch(ws: WebSocket) {
         const me = this.att(ws)
         // The Set keeps insertion order, so this walks the queue oldest first
         const waiting = [...this.waiting]
@@ -242,8 +270,9 @@ export class Lobby extends DurableObject<Env> {
             this.save(s, a)
             this.waiting.delete(ws)
             this.waiting.delete(s)
-            this.send(ws, 'matched', { strangerId: a.userId })
-            this.send(s, 'matched', { strangerId: me.userId })
+            const iceServers = await this.iceServers()
+            this.send(ws, 'matched', { strangerId: a.userId, iceServers })
+            this.send(s, 'matched', { strangerId: me.userId, iceServers })
             return
         }
 

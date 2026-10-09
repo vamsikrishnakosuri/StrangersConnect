@@ -106,7 +106,7 @@ export function HeroIllustration() {
 
 export function PrivacyDiagram() {
     return (
-        <svg viewBox="0 0 640 300" className="w-full h-auto" role="img" aria-label="Video flows directly between you and the stranger. The server only handles the handshake.">
+        <svg viewBox="0 0 640 300" className="w-full h-auto" role="img" aria-label="Your call goes straight between you and the stranger, locked so nobody else can see it.">
             <Sketchy id="priv-sketch" scale={1.3} />
             <g filter="url(#priv-sketch)" fill="none" stroke={INK} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                 {/* laptop: you */}
@@ -151,8 +151,8 @@ export function PrivacyDiagram() {
             <g fontFamily="var(--font-mono)" fontSize="11" fill={INK}>
                 <text x="105" y="258" fillOpacity="0.6">you</text>
                 <text x="526" y="266" fillOpacity="0.6">stranger</text>
-                <text x="320" y="96" fillOpacity="0.5" textAnchor="middle">signaling · handshake only</text>
-                <text x="344" y="240" fill={GLOW} textAnchor="middle">video + audio · peer-to-peer · DTLS-SRTP</text>
+                <text x="320" y="96" fillOpacity="0.5" textAnchor="middle">only introduces you</text>
+                <text x="344" y="240" fill={GLOW} textAnchor="middle">your call · locked end to end</text>
             </g>
         </svg>
     )

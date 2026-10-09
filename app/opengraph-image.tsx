@@ -1,6 +1,6 @@
 import { ImageResponse } from 'next/og'
 
-export const alt = 'Strangers Connect: free random video chat, the Omegle alternative'
+export const alt = 'Strangers Connect: free, private random video chat with strangers'
 export const size = { width: 1200, height: 630 }
 export const contentType = 'image/png'
 
@@ -29,7 +29,7 @@ export default function OpengraphImage() {
                     <div style={{ fontSize: 92, lineHeight: 1.02, letterSpacing: -2, color: '#f2c14e', fontStyle: 'italic' }}>Nothing in between.</div>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 26, color: '#9a978f', fontFamily: 'monospace' }}>
-                    <span>Free random video chat · No sign-up · Peer-to-peer</span>
+                    <span>Free random video chat · No sign-up · Private</span>
                     <span>strangersconnect.com</span>
                 </div>
             </div>
