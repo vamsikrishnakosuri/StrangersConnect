@@ -1,10 +1,11 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { io, Socket } from 'socket.io-client'
+import { Signal, deviceId } from '@/lib/signal'
 import { v4 as uuidv4 } from 'uuid'
 import Landing from '@/components/Landing'
 import { SearchRings } from '@/components/Illustrations'
+import { LogoMark } from '@/components/Logo'
 
 interface Message {
     id: string
@@ -13,7 +14,7 @@ interface Message {
 }
 
 export default function Home() {
-    const [socket, setSocket] = useState<Socket | null>(null)
+    const [socket, setSocket] = useState<Signal | null>(null)
     const [isConnected, setIsConnected] = useState(false)
     const [isSearching, setIsSearching] = useState(false)
     const [isMatched, setIsMatched] = useState(false)
@@ -52,6 +53,12 @@ export default function Home() {
     // Report state
     const [showReportModal, setShowReportModal] = useState(false)
 
+    // "Meet this person again?" The answer only ever narrows matching; silence means yes
+    const [lastPeer, setLastPeer] = useState<string | null>(null)
+    const [rematchAnswer, setRematchAnswer] = useState<'yes' | 'no' | null>(null)
+    const [strangerTyping, setStrangerTyping] = useState(false)
+    const typingSentRef = useRef(0)
+
     const userId = useRef(uuidv4())
     const localVideoRef = useRef<HTMLVideoElement>(null)
     const remoteVideoRef = useRef<HTMLVideoElement>(null)
@@ -68,7 +75,7 @@ export default function Home() {
     const [notice, setNotice] = useState<string | null>(null) // Small toast, e.g. report confirmation
     const pendingIceCandidatesRef = useRef<RTCIceCandidate[]>([]) // Queue ICE candidates until strangerId is ready
     const pendingReceivedIceCandidatesRef = useRef<RTCIceCandidateInit[]>([]) // Queue ICE candidates received before peer connection is ready
-    const socketRef = useRef<Socket | null>(null) // Ref to access current socket in ICE candidate handler
+    const socketRef = useRef<Signal | null>(null) // Ref to access current socket in ICE candidate handler
     const strangerIdRef = useRef<string | null>(null) // Ref to access current strangerId in ICE candidate handler
 
     // End-to-end encrypted chat (Web Crypto API, built into every browser, free)
@@ -257,7 +264,7 @@ export default function Home() {
     }, [isMatched, remoteVideoReady])
 
     // Initialize WebRTC peer connection
-    const createPeerConnection = (currentSocket: Socket | null, currentStrangerId: string | null) => {
+    const createPeerConnection = (currentSocket: Signal | null, currentStrangerId: string | null) => {
         const pc = new RTCPeerConnection({
             iceServers: [
                 // STUN servers for NAT discovery (works for most same-network connections)
@@ -849,9 +856,9 @@ export default function Home() {
                 reportedUserId: strangerId,
                 reason: 'Inappropriate content'
             })
-            console.log('🚨 Report submitted for user:', strangerId)
-            // Disconnect after reporting
+            // Disconnect after reporting; the server also stops you being matched again
             disconnect()
+            setRematchAnswer('no')
         }
         setShowReportModal(false)
     }
@@ -862,12 +869,12 @@ export default function Home() {
 
     // Socket.io connection
     useEffect(() => {
-        const newSocket = io(process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3001')
+        const newSocket = new Signal(process.env.NEXT_PUBLIC_SIGNAL_URL || 'ws://localhost:8787/ws')
 
         newSocket.on('connect', () => {
             console.log('✅ Connected')
             setIsConnected(true)
-            newSocket.emit('register', userId.current)
+            newSocket.emit('register', { userId: userId.current, deviceId: deviceId() })
         })
 
         newSocket.on('disconnect', () => {
@@ -1177,6 +1184,9 @@ export default function Home() {
 
         newSocket.on('disconnected', () => {
             setIsMatched(false)
+            setLastPeer(strangerIdRef.current)
+            setRematchAnswer(null)
+            setStrangerTyping(false)
             setStrangerId(null)
             setHasRemoteStream(false) // Reset stream state
             setRemoteVideoReady(false) // Reset ready state
@@ -1201,7 +1211,16 @@ export default function Home() {
             }
         })
 
+        let typingTimer: ReturnType<typeof setTimeout> | null = null
+        newSocket.on('typing', (data: { from: string; on: boolean }) => {
+            if (data.from !== strangerIdRef.current) return
+            setStrangerTyping(data.on)
+            if (typingTimer) clearTimeout(typingTimer)
+            typingTimer = setTimeout(() => setStrangerTyping(false), 3500)
+        })
+
         newSocket.on('message', async (data: { text: string; encrypted?: boolean; from?: string }) => {
+            setStrangerTyping(false)
             // Only show messages that the stranger's browser encrypted with our shared key
             if (!data.encrypted || !encryptionKeyRef.current || data.from !== strangerIdRef.current) return
             try {
@@ -1225,7 +1244,7 @@ export default function Home() {
             window.scrollTo({ top: 0, behavior: 'smooth' })
             setCallEnded(null)
             setIsSearching(true)
-            socket.emit('find-stranger', userId.current)
+            socket.emit('find-stranger')
         }
     }
 
@@ -1233,6 +1252,9 @@ export default function Home() {
         if (socket && strangerId) {
             socket.emit('disconnect-stranger', { strangerId })
             setIsMatched(false)
+            setLastPeer(strangerIdRef.current)
+            setRematchAnswer(null)
+            setStrangerTyping(false)
             setStrangerId(null)
             strangerIdRef.current = null // Reset ref
             setHasRemoteStream(false) // Reset stream state
@@ -1256,6 +1278,9 @@ export default function Home() {
             // Disconnect from current stranger
             socket.emit('disconnect-stranger', { strangerId })
             setIsMatched(false)
+            setLastPeer(strangerIdRef.current)
+            setRematchAnswer(null)
+            setStrangerTyping(false)
             setStrangerId(null)
             strangerIdRef.current = null // Reset ref
             setHasRemoteStream(false) // Reset stream state
@@ -1273,13 +1298,33 @@ export default function Home() {
             // Automatically search for next stranger
             setTimeout(() => {
                 setIsSearching(true)
-                socket.emit('find-stranger', userId.current)
+                socket.emit('find-stranger')
             }, 100) // Small delay to ensure cleanup completes
         }
     }
 
-    const sendMessage = async () => {
-        const messageText = messageInput.trim()
+    const answerRematch = (answer: 'yes' | 'no') => {
+        setRematchAnswer(answer)
+        if (answer === 'no' && socket && lastPeer) socket.emit('avoid', { peerId: lastPeer })
+    }
+
+    const cancelSearch = () => {
+        socket?.emit('cancel-search')
+        setIsSearching(false)
+    }
+
+    // Tell the stranger we are typing, at most once every 2 seconds
+    const onType = (value: string) => {
+        setMessageInput(value)
+        const now = Date.now()
+        if (socket && strangerId && value && now - typingSentRef.current > 2000) {
+            typingSentRef.current = now
+            socket.emit('typing', { to: strangerId, on: true })
+        }
+    }
+
+    const sendMessage = async (preset?: string) => {
+        const messageText = (preset ?? messageInput).trim()
         // Never send plaintext: wait until the key exchange has finished
         if (!messageText || !socket || !strangerId || !encryptionKeyRef.current) return
         try {
@@ -1287,6 +1332,7 @@ export default function Home() {
             setMessages((prev) => [...prev, { id: uuidv4(), text: messageText, sender: 'me' }])
             socket.emit('send-message', { text: ciphertext, to: strangerId, encrypted: true })
             setMessageInput('')
+            typingSentRef.current = 0
         } catch (error) {
             console.error('Failed to encrypt message:', error)
         }
@@ -1300,12 +1346,7 @@ export default function Home() {
             <header className="sticky top-0 z-40 px-3 sm:px-6 pt-3">
                 <nav className="mx-auto max-w-page flex items-center justify-between gap-3 rounded-full border border-paper/10 bg-ink-900/70 backdrop-blur-xl pl-3 sm:pl-4 pr-2 py-2">
                     <a href="/" className="flex items-center gap-2.5 min-w-0" aria-label="Strangers Connect home">
-                        <img
-                            src="/logo.png"
-                            alt=""
-                            className="h-7 w-7 shrink-0 rounded-lg object-contain"
-                            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
-                        />
+                        <LogoMark className="h-8 w-8 shrink-0" />
                         <span className="font-serif text-[22px] leading-none tracking-tight truncate">Strangers Connect</span>
                     </a>
 
@@ -1314,7 +1355,6 @@ export default function Home() {
                             <a href="#how" className="hover:text-paper transition-colors">How it works</a>
                             <a href="#privacy" className="hover:text-paper transition-colors">Privacy</a>
                             <a href="#faq" className="hover:text-paper transition-colors">FAQ</a>
-                            <a href="https://github.com/vamsikrishnakosuri/StrangersConnect" className="hover:text-paper transition-colors" target="_blank" rel="noopener noreferrer">GitHub</a>
                         </div>
                     )}
 
@@ -1792,58 +1832,98 @@ export default function Home() {
 
                 {/* Chat */}
                 {isMatched && (
-                    <aside className="flex flex-col rounded-2xl border border-paper/10 bg-ink-850 min-h-[340px] lg:min-h-0">
-                        <div className="flex items-center justify-between border-b border-paper/10 px-4 py-3">
-                            <h2 className="text-sm font-medium">Chat</h2>
-                            <span className={`flex items-center gap-1.5 font-mono text-[10.5px] ${chatReady ? 'text-emerald-300/90' : 'text-paper-faint'}`}>
+                    <aside className="flex flex-col overflow-hidden rounded-3xl border border-paper/10 bg-gradient-to-b from-ink-850 to-ink-900 min-h-[360px] lg:min-h-0">
+                        <div className="flex items-end justify-between gap-3 px-5 pt-4 pb-3">
+                            <h2 className="font-serif text-2xl leading-none">Chat</h2>
+                            <p className={`flex items-center gap-1.5 whitespace-nowrap font-mono text-[10.5px] ${chatReady ? 'text-emerald-300/90' : 'text-paper-faint'}`}>
                                 <Icon name="lock" small />
                                 {chatReady ? 'end-to-end encrypted' : 'securing…'}
-                            </span>
-                        </div>
-                        <div className="border-b border-paper/10 px-4 py-3">
-                            <p className="font-mono text-[10.5px] uppercase tracking-[0.18em] text-paper-faint">Safety code</p>
-                            <p className="mt-1 font-mono text-lg tracking-[0.2em] text-glow-soft">{safetyCode ?? '··· ···'}</p>
-                            <p className="mt-1 text-xs leading-relaxed text-paper-mute">
-                                Ask them to read theirs aloud. If the codes match, nobody is listening in between.
                             </p>
                         </div>
-                        <div className="flex-1 overflow-y-auto scrollbar-thin px-4 py-4 space-y-2 max-h-[340px] lg:max-h-none">
+                        <div
+                            className="mx-3 flex items-center justify-between gap-3 rounded-2xl border border-paper/10 bg-ink-950/50 px-3.5 py-2.5"
+                            title="Read this aloud together. If both codes match, nobody is listening in between."
+                        >
+                            <div className="min-w-0">
+                                <p className="font-mono text-[9.5px] uppercase tracking-[0.18em] text-paper-faint">Safety code</p>
+                                <p className="mt-0.5 text-[11.5px] leading-snug text-paper-mute">Read it aloud. Same code, private line.</p>
+                            </div>
+                            <p className="shrink-0 whitespace-nowrap font-mono text-[15px] tracking-[0.16em] text-glow-soft">{safetyCode ?? '··· ···'}</p>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto scrollbar-thin px-4 py-4 space-y-1.5 max-h-[300px] lg:max-h-none" aria-live="polite">
                             {messages.length === 0 && (
-                                <p className="pt-6 text-center text-sm text-paper-faint">Say hi. Messages vanish when the call ends.</p>
+                                <div className="pt-4 text-center">
+                                    <p className="font-serif text-xl italic text-paper-dim">Break the ice</p>
+                                    <div className="mt-4 flex flex-wrap justify-center gap-2">
+                                        {['Hey! Where are you from?', 'What are you up to today?', 'Recommend me a song'].map((q) => (
+                                            <button
+                                                key={q}
+                                                onClick={() => sendMessage(q)}
+                                                disabled={!chatReady}
+                                                className="rounded-full border border-paper/15 px-3.5 py-1.5 text-[13px] text-paper-dim transition hover:border-glow/50 hover:text-paper hover:shadow-[0_0_18px_rgba(242,193,78,0.15)] disabled:opacity-40"
+                                            >
+                                                {q}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
                             )}
-                            {messages.map((msg) =>
-                                msg.sender === 'system' ? (
-                                    <p key={msg.id} className="text-center font-mono text-[11px] text-paper-faint py-1">{msg.text}</p>
-                                ) : (
-                                    <div key={msg.id} className={`flex ${msg.sender === 'me' ? 'justify-end' : 'justify-start'}`}>
-                                        <div className={`max-w-[85%] break-words px-3.5 py-2 rounded-2xl text-[14px] leading-snug ${msg.sender === 'me' ? 'bg-paper text-ink-900 rounded-br-md' : 'bg-ink-700 text-paper rounded-bl-md'}`}>
+                            {messages.map((msg, i) => {
+                                if (msg.sender === 'system') {
+                                    return <p key={msg.id} className="text-center font-mono text-[11px] text-paper-faint py-1">{msg.text}</p>
+                                }
+                                const mine = msg.sender === 'me'
+                                const grouped = messages[i - 1]?.sender === msg.sender
+                                return (
+                                    <div key={msg.id} className={`flex animate-fade-in ${mine ? 'justify-end' : 'justify-start'} ${grouped ? '' : 'pt-2'}`}>
+                                        <div
+                                            className={`max-w-[82%] break-words px-4 py-2.5 text-[14.5px] leading-snug ${
+                                                mine
+                                                    ? 'rounded-[20px] rounded-br-md bg-paper text-ink-900 shadow-[0_6px_24px_-8px_rgba(236,233,226,0.35)]'
+                                                    : 'rounded-[20px] rounded-bl-md border border-paper/10 bg-ink-700/70 text-paper'
+                                            }`}
+                                        >
                                             {msg.text}
                                         </div>
                                     </div>
                                 )
+                            })}
+                            {strangerTyping && (
+                                <div className="flex justify-start pt-2" aria-label="Stranger is typing">
+                                    <div className="flex items-center gap-1 rounded-[20px] rounded-bl-md border border-paper/10 bg-ink-700/70 px-4 py-3">
+                                        {[0, 0.15, 0.3].map((d) => (
+                                            <span key={d} className="h-1.5 w-1.5 rounded-full bg-paper-dim animate-bounce" style={{ animationDelay: `${d}s` }} />
+                                        ))}
+                                    </div>
+                                </div>
                             )}
                             <div ref={messagesEndRef} />
                         </div>
+
                         <form
-                            className="flex items-center gap-2 border-t border-paper/10 p-3"
+                            className="p-3"
                             onSubmit={(e) => {
                                 e.preventDefault()
                                 sendMessage()
                             }}
                         >
-                            <input
-                                type="text"
-                                value={messageInput}
-                                onChange={(e) => setMessageInput(e.target.value)}
-                                placeholder={chatReady ? 'Type a message' : 'Securing chat…'}
-                                disabled={!chatReady}
-                                maxLength={2000}
-                                aria-label="Message"
-                                className="flex-1 min-w-0 rounded-full bg-ink-900 border border-paper/10 px-4 py-2.5 text-sm placeholder:text-paper-faint outline-none focus:border-paper/30 disabled:opacity-60"
-                            />
-                            <button type="submit" disabled={!chatReady || !messageInput.trim()} className="btn-primary h-10 w-10 justify-center p-0" aria-label="Send">
-                                <Icon name="send" />
-                            </button>
+                            <div className="flex items-center gap-2 rounded-full border border-paper/10 bg-ink-950/70 p-1.5 pl-4 transition focus-within:border-paper/30 focus-within:shadow-[0_0_0_4px_rgba(236,233,226,0.04)]">
+                                <input
+                                    type="text"
+                                    value={messageInput}
+                                    onChange={(e) => onType(e.target.value)}
+                                    placeholder={chatReady ? 'Say something nice' : 'Securing chat…'}
+                                    disabled={!chatReady}
+                                    maxLength={2000}
+                                    autoComplete="off"
+                                    aria-label="Message"
+                                    className="flex-1 min-w-0 bg-transparent py-1.5 text-[14.5px] placeholder:text-paper-faint outline-none disabled:opacity-60"
+                                />
+                                <button type="submit" disabled={!chatReady || !messageInput.trim()} className="btn-primary h-9 w-9 shrink-0 justify-center p-0" aria-label="Send">
+                                    <Icon name="send" />
+                                </button>
+                            </div>
                         </form>
                     </aside>
                 )}
@@ -1858,6 +1938,14 @@ export default function Home() {
                         Finding <em className="text-glow-soft">someone new…</em>
                     </h2>
                     <p className="mt-4 max-w-sm text-paper-mute">This usually takes a few seconds. Keep this tab open.</p>
+                    {lastPeer && (
+                        <div className="mt-8">
+                            <RematchQuestion answer={rematchAnswer} onAnswer={answerRematch} />
+                        </div>
+                    )}
+                    <button onClick={cancelSearch} className="mt-8 text-sm text-paper-faint underline-offset-4 hover:text-paper hover:underline">
+                        Cancel
+                    </button>
                 </section>
             )}
 
@@ -1869,6 +1957,11 @@ export default function Home() {
                         Ready for <em className="text-glow-soft">the next one?</em>
                     </h2>
                     <p className="mt-4 text-paper-mute">{callEnded}</p>
+                    {lastPeer && (
+                        <div className="mt-8">
+                            <RematchQuestion answer={rematchAnswer} onAnswer={answerRematch} />
+                        </div>
+                    )}
                     <div className="mt-9 flex flex-col sm:flex-row items-center justify-center gap-3">
                         <button onClick={findStranger} disabled={!isConnected} className="btn-primary px-7 py-3.5 text-[15px]">
                             Meet someone new
@@ -1912,13 +2005,10 @@ export default function Home() {
                 <div className="mx-auto max-w-page px-4 sm:px-6 py-10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-sm text-paper-faint">
                     <p>
                         <span className="font-serif text-lg text-paper-dim">Strangers Connect</span>
-                        <span className="ml-3">Free, open source, for adults 18+.</span>
+                        <span className="ml-3">Free, private, for adults 18+.</span>
                     </p>
                     <p className="flex flex-wrap items-center gap-x-5 gap-y-2">
                         <span>© {new Date().getFullYear()} Vamsi Krishna Kosuri</span>
-                        <a href="https://github.com/vamsikrishnakosuri/StrangersConnect" className="hover:text-paper transition-colors" target="_blank" rel="noopener noreferrer">
-                            Source on GitHub
-                        </a>
                     </p>
                 </div>
             </footer>
@@ -1926,8 +2016,27 @@ export default function Home() {
     )
 }
 
+function RematchQuestion({ answer, onAnswer }: { answer: 'yes' | 'no' | null; onAnswer: (a: 'yes' | 'no') => void }) {
+    if (answer) {
+        return (
+            <p className="font-mono text-[11px] text-paper-faint animate-fade-in">
+                {answer === 'no' ? 'Got it. You will not be matched with them again.' : 'Noted. You might meet again someday.'}
+            </p>
+        )
+    }
+    return (
+        <div className="inline-flex flex-col sm:flex-row items-center gap-3 rounded-full border border-paper/10 bg-ink-850/80 py-2 pl-5 pr-2 animate-fade-in">
+            <span className="text-sm text-paper-dim">Okay to meet this person again someday?</span>
+            <span className="flex gap-1.5">
+                <button onClick={() => onAnswer('yes')} className="rounded-full border border-paper/15 px-4 py-1.5 text-sm hover:border-paper/40 hover:bg-paper/5">Sure</button>
+                <button onClick={() => onAnswer('no')} className="rounded-full border border-paper/15 px-4 py-1.5 text-sm hover:border-paper/40 hover:bg-paper/5">No, never</button>
+            </span>
+        </div>
+    )
+}
+
 function Icon({ name, small }: { name: 'mic' | 'micOff' | 'cam' | 'camOff' | 'speaker' | 'next' | 'end' | 'flag' | 'lock' | 'send'; small?: boolean }) {
-    const p: Record<typeof name, JSX.Element> = {
+    const p: Record<typeof name, React.ReactElement> = {
         mic: <><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3" /></>,
         micOff: <><path d="M15 9.3V6a3 3 0 0 0-5.7-1.3M9 9v2a3 3 0 0 0 5 2.2M5 11a7 7 0 0 0 11.5 5.3M19 11a7 7 0 0 1-.4 2.3M12 18v3M3 3l18 18" /></>,
         cam: <><rect x="3" y="6" width="13" height="12" rx="2.5" /><path d="M16 10.5 21 7v10l-5-3.5" /></>,

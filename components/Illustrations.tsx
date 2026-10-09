@@ -1,3 +1,5 @@
+import type React from 'react'
+
 // Hand-drawn line art. A small displacement filter wobbles the strokes so they
 // read as pen on paper rather than vector-perfect geometry.
 
@@ -158,7 +160,7 @@ export function PrivacyDiagram() {
 
 // Small line icons, 32px, same pen
 export function LineIcon({ name }: { name: 'camera' | 'shuffle' | 'next' | 'chat' | 'swap' | 'flag' | 'phone' | 'code' | 'nokey' }) {
-    const paths: Record<typeof name, JSX.Element> = {
+    const paths: Record<typeof name, React.ReactElement> = {
         camera: <><rect x="4" y="9" width="17" height="14" rx="3" /><path d="M21 14 L 28 10 L 28 22 L 21 18" /><circle cx="9" cy="14" r="1" /></>,
         shuffle: <><path d="M4 10 C 12 10, 16 22, 26 22 M4 22 C 12 22, 16 10, 26 10" /><path d="M23 7 L 27 10 L 23 13 M23 19 L 27 22 L 23 25" /></>,
         next: <><path d="M6 8 L 18 16 L 6 24 Z" /><path d="M24 8 L 24 24" /></>,

@@ -38,10 +38,6 @@ export const metadata: Metadata = {
         follow: true,
         googleBot: { index: true, follow: true, 'max-image-preview': 'large', 'max-snippet': -1, 'max-video-preview': -1 },
     },
-    icons: {
-        icon: '/logo.png',
-        apple: '/logo.png',
-    },
     // Paste the token from Google Search Console / Bing Webmaster Tools into these env vars on Vercel
     verification: {
         google: process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION,
@@ -81,7 +77,6 @@ const jsonLd = {
             description: SITE_DESCRIPTION,
             image: `${SITE_URL}/opengraph-image`,
             author: { '@type': 'Person', name: 'Vamsi Krishna Kosuri', url: 'https://github.com/vamsikrishnakosuri' },
-            sameAs: ['https://github.com/vamsikrishnakosuri/StrangersConnect'],
         },
         {
             '@type': 'FAQPage',

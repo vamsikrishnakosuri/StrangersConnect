@@ -85,9 +85,9 @@ export default function Landing({ onStart, isConnected }: Props) {
                 <ul className="mx-auto max-w-page px-4 sm:px-6 grid grid-cols-2 md:grid-cols-4">
                     {[
                         ['P2P', 'Video goes direct, browser to browser'],
-                        ['0', 'Accounts, emails or phone numbers'],
+                        ['No', 'Account, email or phone number'],
                         ['1 click', 'To skip to the next person'],
-                        ['MIT', 'Open source, read every line'],
+                        ['0', 'Messages or calls stored, ever'],
                     ].map(([k, v], i) => (
                         <li key={k} className={`py-7 px-4 sm:px-6 ${i > 0 ? 'md:border-l' : ''} ${i % 2 === 1 ? 'border-l' : ''} ${i > 1 ? 'border-t md:border-t-0' : ''} border-paper/10`}>
                             <p className="font-serif text-3xl text-paper">{k}</p>
@@ -172,7 +172,7 @@ export default function Landing({ onStart, isConnected }: Props) {
                         { icon: 'next' as const, t: 'Next in one tap', d: 'Skip instantly and you are already searching for the next person.' },
                         { icon: 'swap' as const, t: 'Swap and zoom', d: 'Tap to swap views. Pinch or scroll to zoom, just like on your phone.' },
                         { icon: 'flag' as const, t: 'Report and ban', d: 'Bad actors are removed automatically after repeated reports.' },
-                        { icon: 'code' as const, t: 'Open source', d: 'MIT licensed. Audit it, fork it, or help make it better on GitHub.' },
+                        { icon: 'nokey' as const, t: 'No account', d: 'No email, no phone number, no profile. Nothing to sign up for and nothing to leak.' },
                     ].map((f) => (
                         <div key={f.t} className="group bg-ink-900 p-8 transition-colors hover:bg-ink-850">
                             <div className="text-paper-dim transition-colors group-hover:text-glow">

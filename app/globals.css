@@ -22,9 +22,9 @@ body {
   color: #fff;
 }
 
-/* Video aspect ratio - Mobile: Portrait (like WhatsApp), Desktop: Landscape */
+/* Video aspect ratio - Mobile: tall portrait that still leaves room for chat, Desktop: landscape */
 .video-container {
-  aspect-ratio: 9/16;
+  aspect-ratio: 4/5;
 }
 
 @media (min-width: 768px) {
