@@ -2,77 +2,173 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  color-scheme: dark;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: #0e0e10;
+  color: #ece9e2;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: rgba(242, 193, 78, 0.28);
+  color: #fff;
+}
+
 /* Video aspect ratio - Mobile: Portrait (like WhatsApp), Desktop: Landscape */
 .video-container {
-  aspect-ratio: 9/16; /* Portrait for mobile */
+  aspect-ratio: 9/16;
 }
 
 @media (min-width: 768px) {
   .video-container {
-    aspect-ratio: 16/9; /* Landscape for desktop */
+    aspect-ratio: 16/9;
   }
 }
 
-:root {
-  --foreground-rgb: 0, 0, 0;
-  --background-start-rgb: 214, 219, 220;
-  --background-end-rgb: 255, 255, 255;
+/* Faint drafting-paper grid behind the page */
+.paper-grid {
+  background-image:
+    linear-gradient(rgba(236, 233, 226, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(236, 233, 226, 0.035) 1px, transparent 1px);
+  background-size: 56px 56px;
+  mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, #000 30%, transparent 100%);
+  -webkit-mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, #000 30%, transparent 100%);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --foreground-rgb: 255, 255, 255;
-    --background-start-rgb: 0, 0, 0;
-    --background-end-rgb: 0, 0, 0;
-  }
+/* Fine film grain so flat charcoal does not look digital */
+.grain::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0.05;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
 }
 
-body {
-  color: rgb(var(--foreground-rgb));
-  background: linear-gradient(
-      to bottom,
-      transparent,
-      rgb(var(--background-end-rgb))
-    )
-    rgb(var(--background-start-rgb));
+/* Line art draws itself in */
+.draw {
+  stroke-dasharray: var(--len, 1200);
+  stroke-dashoffset: var(--len, 1200);
+  animation: draw 2.4s cubic-bezier(0.65, 0, 0.35, 1) forwards;
+  animation-delay: var(--delay, 0s);
 }
 
-@layer utilities {
-  .text-balance {
-    text-wrap: balance;
-  }
-}
-
-/* Custom Scrollbar */
-.scrollbar-thin::-webkit-scrollbar {
-  width: 6px;
-}
-
-.scrollbar-thin::-webkit-scrollbar-track {
-  border-radius: 10px;
-}
-
-.scrollbar-thin::-webkit-scrollbar-thumb {
-  border-radius: 10px;
-}
-
-/* Smooth Animations */
-@keyframes fade-in {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
+@keyframes draw {
   to {
-    opacity: 1;
-    transform: translateY(0);
+    stroke-dashoffset: 0;
   }
 }
 
-.animate-fade-in {
-  animation: fade-in 0.3s ease-out;
+/* Slow breathing glow for accent dots and the live indicator */
+.breathe {
+  animation: breathe 3.2s ease-in-out infinite;
 }
 
-/* Custom Range Slider Styles */
+@keyframes breathe {
+  0%, 100% { opacity: 0.55; filter: drop-shadow(0 0 4px rgba(242, 193, 78, 0.5)); }
+  50% { opacity: 1; filter: drop-shadow(0 0 12px rgba(242, 193, 78, 0.9)); }
+}
+
+/* Dashed connection line drifts like a signal */
+.signal {
+  stroke-dasharray: 2 9;
+  animation: signal 1.6s linear infinite;
+}
+
+@keyframes signal {
+  to { stroke-dashoffset: -22; }
+}
+
+/* Concentric search rings */
+.ring {
+  transform-origin: center;
+  transform-box: fill-box;
+  animation: ring 2.8s cubic-bezier(0.2, 0.6, 0.3, 1) infinite;
+}
+
+@keyframes ring {
+  0% { transform: scale(0.4); opacity: 0.9; }
+  100% { transform: scale(1.6); opacity: 0; }
+}
+
+/* Reveal on load */
+.rise {
+  opacity: 0;
+  transform: translateY(14px);
+  animation: rise 0.9s cubic-bezier(0.2, 0.7, 0.2, 1) forwards;
+  animation-delay: var(--delay, 0s);
+}
+
+@keyframes rise {
+  to { opacity: 1; transform: none; }
+}
+
+/* Primary button: paper pill with a soft glow halo on hover */
+.btn-primary {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  border-radius: 999px;
+  background: #ece9e2;
+  color: #0e0e10;
+  font-weight: 500;
+  transition: transform 0.2s ease, box-shadow 0.3s ease, background 0.2s ease;
+  box-shadow: 0 0 0 1px rgba(236, 233, 226, 0.4), 0 0 0 rgba(242, 193, 78, 0);
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: #fff;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.6), 0 0 36px rgba(242, 193, 78, 0.35);
+}
+
+.btn-primary:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.btn-primary:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  border-radius: 999px;
+  border: 1px solid rgba(236, 233, 226, 0.16);
+  color: #ece9e2;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.btn-ghost:hover {
+  border-color: rgba(236, 233, 226, 0.4);
+  background: rgba(236, 233, 226, 0.04);
+}
+
+/* FAQ disclosure */
+details > summary {
+  list-style: none;
+}
+
+details > summary::-webkit-details-marker {
+  display: none;
+}
+
+details[open] .faq-plus {
+  transform: rotate(45deg);
+}
+
+/* Range slider */
 input[type="range"] {
   -webkit-appearance: none;
   appearance: none;
@@ -80,219 +176,48 @@ input[type="range"] {
   cursor: pointer;
 }
 
-input[type="range"]::-webkit-slider-track {
-  height: 8px;
-  border-radius: 4px;
-}
-
 input[type="range"]::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  height: 18px;
-  width: 18px;
+  height: 14px;
+  width: 14px;
   border-radius: 50%;
-  background: #ffffff;
-  cursor: pointer;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-  transition: all 0.2s ease;
-}
-
-input[type="range"]::-webkit-slider-thumb:hover {
-  transform: scale(1.1);
-  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.3);
-}
-
-input[type="range"]::-moz-range-track {
-  height: 8px;
-  border-radius: 4px;
+  background: #ece9e2;
+  box-shadow: 0 0 10px rgba(242, 193, 78, 0.4);
 }
 
 input[type="range"]::-moz-range-thumb {
-  height: 18px;
-  width: 18px;
-  border-radius: 50%;
-  background: #ffffff;
-  cursor: pointer;
+  height: 14px;
+  width: 14px;
   border: none;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-  transition: all 0.2s ease;
+  border-radius: 50%;
+  background: #ece9e2;
+  box-shadow: 0 0 10px rgba(242, 193, 78, 0.4);
 }
 
-input[type="range"]::-moz-range-thumb:hover {
-  transform: scale(1.1);
-  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.3);
+.scrollbar-thin::-webkit-scrollbar {
+  width: 6px;
 }
 
-/* Futuristic Sci-Fi Animations */
-@keyframes pulse-slow {
-  0%, 100% {
-    opacity: 0.4;
-    transform: scale(1);
-  }
-  50% {
-    opacity: 0.8;
-    transform: scale(1.05);
-  }
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  border-radius: 10px;
+  background: rgba(236, 233, 226, 0.12);
 }
 
-@keyframes glow-pulse {
-  0%, 100% {
-    box-shadow: 0 0 20px rgba(234, 179, 8, 0.4), 0 0 40px rgba(234, 179, 8, 0.2);
-  }
-  50% {
-    box-shadow: 0 0 30px rgba(234, 179, 8, 0.6), 0 0 60px rgba(234, 179, 8, 0.4);
-  }
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
 }
 
-@keyframes glow-pulse-homepage {
-  0%, 100% {
-    box-shadow: 0 0 40px rgba(234, 179, 8, 0.5), 0 0 80px rgba(234, 179, 8, 0.3);
-  }
-  50% {
-    box-shadow: 0 0 60px rgba(234, 179, 8, 0.7), 0 0 120px rgba(234, 179, 8, 0.5);
+.animate-fade-in {
+  animation: fade-in 0.3s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .draw, .rise, .breathe, .signal, .ring {
+    animation: none !important;
+    stroke-dashoffset: 0 !important;
+    opacity: 1 !important;
+    transform: none !important;
   }
 }
-
-@keyframes scan-line {
-  0% {
-    transform: translateY(-100%);
-    opacity: 0;
-  }
-  50% {
-    opacity: 0.3;
-  }
-  100% {
-    transform: translateY(100vh);
-    opacity: 0;
-  }
-}
-
-@keyframes float {
-  0%, 100% {
-    transform: translateY(0px);
-  }
-  50% {
-    transform: translateY(-10px);
-  }
-}
-
-@keyframes shimmer {
-  0% {
-    background-position: -1000px 0;
-  }
-  100% {
-    background-position: 1000px 0;
-  }
-}
-
-@keyframes border-glow {
-  0%, 100% {
-    border-color: rgba(234, 179, 8, 0.3);
-    box-shadow: 0 0 10px rgba(234, 179, 8, 0.2);
-  }
-  50% {
-    border-color: rgba(234, 179, 8, 0.6);
-    box-shadow: 0 0 20px rgba(234, 179, 8, 0.4);
-  }
-}
-
-.animate-pulse-slow {
-  animation: pulse-slow 3s ease-in-out infinite;
-}
-
-/* Logo glow classes removed - using inline styles for more control */
-
-.animate-float {
-  animation: float 3s ease-in-out infinite;
-}
-
-.animate-scan-line {
-  animation: scan-line 8s linear infinite;
-}
-
-/* Futuristic Button Effects */
-.futuristic-button {
-  position: relative;
-  overflow: hidden;
-}
-
-.futuristic-button::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: -100%;
-  width: 100%;
-  height: 100%;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    rgba(255, 255, 255, 0.2),
-    transparent
-  );
-  transition: left 0.5s;
-}
-
-.futuristic-button:hover::before {
-  left: 100%;
-}
-
-/* Sci-Fi Glow Effects */
-.glow-yellow {
-  text-shadow: 0 0 10px rgba(234, 179, 8, 0.5),
-               0 0 20px rgba(234, 179, 8, 0.3),
-               0 0 30px rgba(234, 179, 8, 0.2);
-}
-
-.glow-blue {
-  text-shadow: 0 0 10px rgba(59, 130, 246, 0.5),
-               0 0 20px rgba(59, 130, 246, 0.3),
-               0 0 30px rgba(59, 130, 246, 0.2);
-}
-
-/* Subtle Background Animation */
-@keyframes gradient-shift {
-  0%, 100% {
-    background-position: 0% 50%;
-  }
-  50% {
-    background-position: 100% 50%;
-  }
-}
-
-.bg-gradient-animated {
-  background-size: 200% 200%;
-  animation: gradient-shift 10s ease infinite;
-}
-
-/* Holographic Effect */
-.holographic {
-  background: linear-gradient(
-    135deg,
-    rgba(234, 179, 8, 0.1) 0%,
-    rgba(59, 130, 246, 0.1) 50%,
-    rgba(234, 179, 8, 0.1) 100%
-  );
-  background-size: 200% 200%;
-  animation: gradient-shift 5s ease infinite;
-}
-
-/* Scan Line Effect (optional overlay) */
-.scan-line-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 2px;
-  background: linear-gradient(
-    to bottom,
-    transparent,
-    rgba(234, 179, 8, 0.5),
-    transparent
-  );
-  pointer-events: none;
-  z-index: 9999;
-  animation: scan-line 8s linear infinite;
-  display: none; /* Can be enabled for extra sci-fi effect */
-}
-
-
