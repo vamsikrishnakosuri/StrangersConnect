@@ -2048,7 +2048,7 @@ export default function Home() {
     return (
         <div className="grain relative min-h-screen bg-ink-900 text-paper">
             {/* Floating pill nav */}
-            <header className="sticky top-0 z-40 px-3 sm:px-6 pt-3">
+            <header className={`${isMatched ? 'relative lg:sticky' : 'sticky'} top-0 z-40 px-3 sm:px-6 pt-3`}>
                 <nav className="mx-auto max-w-page flex items-center justify-between gap-3 rounded-full border border-paper/10 bg-ink-900/70 backdrop-blur-xl pl-3 sm:pl-4 pr-2 py-2">
                     <a href="/" className="flex items-center gap-2.5 min-w-0" aria-label="Strangers Connect home">
                         <LogoMark className="h-8 w-8 shrink-0" />
