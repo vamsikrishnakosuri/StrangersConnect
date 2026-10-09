@@ -94,14 +94,23 @@ export default function ScrollScenes() {
                     ease: 'none',
                     scrollTrigger: { trigger: '[data-scene="privacy"]', start: 'top 85%', end: 'center 60%', scrub: 0.8 },
                 })
-                gsap.from('[data-anim="bullet"]', {
-                    x: -24,
-                    opacity: 0,
-                    duration: 0.8,
-                    stagger: 0.12,
-                    ease: 'power3.out',
-                    scrollTrigger: { trigger: '[data-scene="privacy"]', start: 'top 55%' },
+                // Privacy tiles fade in as they enter the screen (simple and robust)
+                const tiles = gsap.utils.toArray<HTMLElement>('[data-anim="bullet"]')
+                tiles.forEach((el, i) => {
+                    el.classList.add('reveal-item')
+                    el.style.transitionDelay = `${(i % 2) * 80 + Math.floor(i / 2) * 90}ms`
                 })
+                const tileObserver = new IntersectionObserver(
+                    (entries) =>
+                        entries.forEach((e) => {
+                            if (e.isIntersecting) {
+                                e.target.classList.add('is-in')
+                                tileObserver.unobserve(e.target)
+                            }
+                        }),
+                    { threshold: 0.2 },
+                )
+                tiles.forEach((el) => tileObserver.observe(el))
 
                 // Features: the cards start as a stacked deck in the middle, then deal out
                 // one after another into the grid while the section is held in place
