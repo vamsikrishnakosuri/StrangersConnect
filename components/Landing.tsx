@@ -3,6 +3,7 @@
 import { FAQ } from '@/lib/site'
 import { LineIcon, PrivacyDiagram } from './Illustrations'
 import { GlobeHero } from './GlobeHero'
+import { NoiseField } from './NoiseField'
 import ScrollScenes from './ScrollScenes'
 
 type Props = {
@@ -30,29 +31,6 @@ function StartButton({ onStart, isConnected, size = 'lg' }: Props & { size?: 'lg
     )
 }
 
-// Handwritten ribbons of overheard small talk, in the spirit of Wispr's flowing text
-function Ribbons() {
-    const lines = [
-        { d: 'M-40 520 C 120 380, 220 300, 330 120', text: 'hey! where are you from? · just moved to Lisbon · no way, me too · what are you listening to lately? · ' },
-        { d: 'M1240 120 C 1080 260, 1020 420, 860 560', text: 'okay this is random but hi · it is 3am here · good morning from Seoul · you have a cool room · ' },
-    ]
-    return (
-        <svg className="pointer-events-none absolute inset-0 w-full h-full hidden md:block" viewBox="0 0 1200 640" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
-            {lines.map((l, i) => (
-                <g key={i}>
-                    <path id={`ribbon-${i}`} d={l.d} fill="none" />
-                    <text fontFamily="var(--font-serif)" fontStyle="italic" fontSize="17" fill="#ece9e2" fillOpacity="0.22" letterSpacing="0.5">
-                        <textPath href={`#ribbon-${i}`}>
-                            {l.text.repeat(2)}
-                            <animate attributeName="startOffset" from="0%" to="-50%" dur="40s" repeatCount="indefinite" />
-                        </textPath>
-                    </text>
-                </g>
-            ))}
-        </svg>
-    )
-}
-
 export default function Landing({ onStart, isConnected }: Props) {
     return (
         <main>
@@ -60,10 +38,10 @@ export default function Landing({ onStart, isConnected }: Props) {
             {/* Hero */}
             <section className="relative" data-scene="hero">
                 <div className="absolute inset-0 overflow-hidden" aria-hidden="true">
-                    <div data-anim="blob-a" className="absolute inset-0"><div className="hero-blob hero-blob-a" /></div>
-                    <div data-anim="blob-b" className="absolute inset-0"><div className="hero-blob hero-blob-b" /></div>
-                    <div className="paper-grid absolute inset-0" />
-                    <div data-anim="ribbons" className="absolute inset-0"><Ribbons /></div>
+                    <div data-anim="field" className="absolute inset-0"><NoiseField /></div>
+                    <div className="paper-grid absolute inset-0 opacity-60" />
+                    {/* fade the field into the page below */}
+                    <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-b from-transparent to-ink-900" />
                 </div>
                 <div className="relative mx-auto max-w-page px-4 sm:px-6 pt-16 sm:pt-24 text-center">
                     <div data-anim="hero-text">

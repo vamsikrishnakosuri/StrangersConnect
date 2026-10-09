@@ -87,15 +87,22 @@ export function GlobeHero() {
         let H = 0
         let R = 0
         let dpr = 1
+        // Resizing a canvas wipes it, so only do it when the size truly changes
+        // (pinning while scrolling can report a no-op resize) and redraw right away
         const resize = () => {
-            dpr = Math.min(3, (window.devicePixelRatio || 1) * 1.6) // headroom for the scroll zoom
-            W = wrap.clientWidth
+            const nw = wrap.clientWidth
+            const ndpr = Math.min(2.5, (window.devicePixelRatio || 1) * 1.5) // headroom for the scroll zoom
+            if (nw === W && ndpr === dpr) return
+            dpr = ndpr
+            W = nw
             H = Math.round(W * 0.92)
             canvas.width = W * dpr
             canvas.height = H * dpr
             canvas.style.height = `${H}px`
             R = Math.min(W, H) * 0.34
+            if (ready) render(performance.now())
         }
+        let ready = false
         resize()
         const ro = new ResizeObserver(resize)
         ro.observe(wrap)
@@ -105,24 +112,12 @@ export function GlobeHero() {
         const dots: V3[] = []
         for (let i = 0; i < ll.length; i += 2) dots.push(toVec(ll[i], ll[i + 1]))
 
-        // Each city gets a small skyline: a cluster of thin towers of different heights
-        const cities = CITIES.map((c) => {
-            const towers = Array.from({ length: 5 + Math.floor(rand() * 4) }, () => ({
-                v: toVec(c.lat + (rand() - 0.5) * 2.2, c.lon + (rand() - 0.5) * 2.2),
-                h: 0.04 + rand() * 0.1,
-                phase: rand() * Math.PI * 2,
-            }))
-            return { ...c, v: toVec(c.lat, c.lon), towers }
-        })
+        // Each city is a person waiting to meet someone
+        const cities = CITIES.map((c) => ({ ...c, v: toVec(c.lat, c.lon), phase: rand() * Math.PI * 2 }))
+        const glowUntil = new Map<number, number>() // city index -> time its person stays lit
 
-        // Faint stars around the globe
-        const stars = Array.from({ length: 90 }, () => ({ x: rand(), y: rand(), r: 0.4 + rand() * 0.9, phase: rand() * Math.PI * 2 }))
-
-        // Two tilted orbits, each with a satellite
-        const orbits = [
-            { tilt: 0.42, spin: 0.6, radius: 1.22, speed: 0.00022, color: CYAN },
-            { tilt: -0.9, spin: 2.1, radius: 1.34, speed: -0.00016, color: BLUE },
-        ].map((o) => {
+        // One thin orbit with a satellite, for depth
+        const orbits = [{ tilt: 0.42, spin: 0.6, radius: 1.24, speed: 0.0002, color: CYAN }].map((o) => {
             const n = norm([Math.sin(o.tilt) * Math.cos(o.spin), Math.cos(o.tilt), Math.sin(o.tilt) * Math.sin(o.spin)])
             const u = norm(cross(n, [0, 0, 1]))
             const w = cross(n, u)
@@ -174,6 +169,7 @@ export function GlobeHero() {
             if (a === b) b = (b + 1) % cities.length
             if (project(cities[a].v).z < 0) [a, b] = [b, a]
             arcs.push({ a, b, born: now })
+            glowUntil.set(a, now + 3800)
         }
 
         const drawOrbit = (o: (typeof orbits)[number], now: number, front: boolean) => {
@@ -237,18 +233,6 @@ export function GlobeHero() {
             ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
             ctx.clearRect(0, 0, W, H)
 
-            // Stars
-            for (const s of stars) {
-                const sx = s.x * W
-                const sy = s.y * H
-                if (Math.hypot(sx - W / 2, sy - H / 2) < R * 1.05) continue
-                const tw = reduced ? 0.5 : 0.35 + 0.35 * Math.sin(now * 0.0012 + s.phase)
-                ctx.fillStyle = `rgba(200,225,255,${tw * 0.6})`
-                ctx.beginPath()
-                ctx.arc(sx, sy, s.r, 0, Math.PI * 2)
-                ctx.fill()
-            }
-
             // Atmosphere: cool blue and teal glow
             const halo = ctx.createRadialGradient(W / 2, H / 2, R * 0.85, W / 2, H / 2, R * 1.5)
             halo.addColorStop(0, 'rgba(103,232,249,0.14)')
@@ -288,26 +272,34 @@ export function GlobeHero() {
                 ctx.fill()
             }
 
-            // City skylines: thin towers standing out from the surface
-            for (const c of cities) {
-                for (const t of c.towers) {
-                    const base = project(t.v)
-                    if (base.z < 0.08) continue
-                    const breath = reduced ? 1 : 0.85 + 0.15 * Math.sin(now * 0.0015 + t.phase)
-                    const top = project(scale(t.v, 1 + t.h * breath))
-                    const col = mix(BLUE, CYAN, (t.h - 0.04) / 0.1)
-                    const g = ctx.createLinearGradient(base.x, base.y, top.x, top.y)
-                    g.addColorStop(0, `rgba(${col[0]},${col[1]},${col[2]},${0.15 * base.z})`)
-                    g.addColorStop(1, `rgba(${col[0]},${col[1]},${col[2]},${0.95 * base.z})`)
-                    ctx.strokeStyle = g
-                    ctx.lineWidth = 2
-                    ctx.beginPath()
-                    ctx.moveTo(base.x, base.y)
-                    ctx.lineTo(top.x, top.y)
-                    ctx.stroke()
-                    ctx.fillStyle = `rgba(230,250,255,${0.85 * base.z})`
-                    ctx.fillRect(top.x - 0.9, top.y - 0.9, 1.8, 1.8)
+            // People: a tiny head-and-shoulders figure at each city, lit while connecting
+            for (let ci = 0; ci < cities.length; ci++) {
+                const c = cities[ci]
+                const p = project(c.v)
+                if (p.z < 0.12) continue
+                const lit = (glowUntil.get(ci) ?? 0) > now
+                const k = 0.75 + p.z * 0.45
+                const bob = reduced ? 0 : Math.sin(now * 0.002 + c.phase) * 0.6
+                const x = p.x
+                const y = p.y - 7 * k + bob
+                if (lit) {
+                    const g = ctx.createRadialGradient(x, y + 2, 0, x, y + 2, 16 * k)
+                    g.addColorStop(0, 'rgba(103,232,249,0.45)')
+                    g.addColorStop(1, 'rgba(103,232,249,0)')
+                    ctx.fillStyle = g
+                    ctx.fillRect(x - 16 * k, y - 14 * k, 32 * k, 32 * k)
                 }
+                const a = (lit ? 1 : 0.55) * Math.min(1, p.z + 0.25)
+                ctx.fillStyle = lit ? `rgba(220,250,255,${a})` : `rgba(170,215,240,${a})`
+                ctx.beginPath()
+                ctx.arc(x, y - 2.6 * k, 2.1 * k, 0, Math.PI * 2) // head
+                ctx.fill()
+                ctx.beginPath()
+                ctx.ellipse(x, y + 3.4 * k, 3.6 * k, 2.6 * k, 0, Math.PI, 0) // shoulders
+                ctx.fill()
+                // A small anchor dot on the surface
+                ctx.fillStyle = `rgba(103,232,249,${0.5 * p.z})`
+                ctx.fillRect(p.x - 0.8, p.y - 0.8, 1.6, 1.6)
             }
 
             if (now - lastSpawn > (reduced ? 2600 : 1100) && arcs.length < (reduced ? 3 : 7)) {
@@ -366,6 +358,7 @@ export function GlobeHero() {
                 } else if (!arc.greeted) {
                     // Arrival: a ripple on the surface and a hello in the local language
                     arc.greeted = true
+                    glowUntil.set(arc.b, now + 2600)
                     ripples.push({ city: arc.b, born: now })
                     if (!hellos.some((h) => h.city === arc.b && now - h.born < 2400)) {
                         hellos.push({ city: arc.b, born: now, text: cities[arc.b].hi })
@@ -448,6 +441,8 @@ export function GlobeHero() {
             }
         }
 
+        ready = true
+        render(performance.now())
         raf = requestAnimationFrame(frame)
 
         return () => {
