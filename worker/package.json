@@ -1,0 +1,14 @@
+{
+  "name": "strangers-connect-signal",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler dev --port 8787",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261008.1",
+    "typescript": "^7.0.2",
+    "wrangler": "^4.149.0"
+  }
+}

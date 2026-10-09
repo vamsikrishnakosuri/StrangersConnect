@@ -1,0 +1,11 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "strangers-connect-signal",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-01",
+  "observability": { "enabled": false },
+  "durable_objects": {
+    "bindings": [{ "name": "LOBBY", "class_name": "Lobby" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Lobby"] }]
+}

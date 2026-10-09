@@ -8,21 +8,36 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        primary: {
-          50: '#f0f9ff',
-          100: '#e0f2fe',
-          200: '#bae6fd',
-          300: '#7dd3fc',
-          400: '#38bdf8',
-          500: '#0ea5e9',
-          600: '#0284c7',
-          700: '#0369a1',
-          800: '#075985',
-          900: '#0c4a6e',
+        // Charcoal surfaces, warm paper-white line work, one amber glow accent
+        ink: {
+          950: '#0b0b0d',
+          900: '#0e0e10',
+          850: '#131316',
+          800: '#18181c',
+          700: '#232328',
+          600: '#2e2e34',
         },
+        paper: {
+          DEFAULT: '#ece9e2',
+          dim: '#b9b6ae',
+          mute: '#8a877f',
+          faint: '#5c5a55',
+        },
+        glow: {
+          DEFAULT: '#f2c14e',
+          soft: '#f6d488',
+        },
+        danger: '#e5735f',
+      },
+      fontFamily: {
+        sans: ['var(--font-sans)', 'system-ui', 'sans-serif'],
+        serif: ['var(--font-serif)', 'Georgia', 'serif'],
+        mono: ['var(--font-mono)', 'ui-monospace', 'monospace'],
+      },
+      maxWidth: {
+        page: '1160px',
       },
     },
   },
   plugins: [],
 }
-

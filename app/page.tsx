@@ -1,17 +1,58 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { io, Socket } from 'socket.io-client'
+import type React from 'react'
+import { Signal, deviceId } from '@/lib/signal'
 import { v4 as uuidv4 } from 'uuid'
+import Landing from '@/components/Landing'
+import { SearchRings } from '@/components/Illustrations'
+import { LogoMark } from '@/components/Logo'
+import { drawFaceFx, loadFaceLandmarker, type FaceFx } from '@/lib/faceFx'
+import type { FaceLandmarker, NormalizedLandmark } from '@mediapipe/tasks-vision'
+import type { FaceRenderer, WarpName } from '@/lib/faceRender'
+import type { PaintName } from '@/lib/faceTextures'
+
+type PropName = 'bunny' | 'kitty' | 'shades'
+type VideoFilter = 'none' | PaintName | WarpName | PropName | 'blur' | 'pixel'
+
+type FilterDef = { label: string; css: string; face?: boolean; paint?: PaintName; warp?: WarpName; prop?: PropName; group: 'off' | 'fun' | 'privacy' }
+
+const FILTERS: Record<VideoFilter, FilterDef> = {
+    none: { label: 'Off', css: 'none', group: 'off' },
+    neon: { label: 'Neon', css: 'none', face: true, paint: 'neon', group: 'fun' },
+    bigeyes: { label: 'Big eyes', css: 'none', face: true, warp: 'bigeyes', group: 'fun' },
+    alien: { label: 'Alien', css: 'none', face: true, warp: 'alien', group: 'fun' },
+    tiger: { label: 'Tiger', css: 'none', face: true, paint: 'tiger', group: 'fun' },
+    glam: { label: 'Glam', css: 'none', face: true, paint: 'glam', group: 'fun' },
+    skull: { label: 'Skull', css: 'none', face: true, paint: 'skull', group: 'fun' },
+    bunny: { label: 'Bunny', css: 'none', face: true, prop: 'bunny', group: 'fun' },
+    kitty: { label: 'Kitty', css: 'none', face: true, prop: 'kitty', group: 'fun' },
+    shades: { label: 'Shades', css: 'none', face: true, prop: 'shades', group: 'fun' },
+    bignose: { label: 'Big nose', css: 'none', face: true, warp: 'bignose', group: 'fun' },
+    blur: { label: 'Blur', css: 'blur(16px)', group: 'privacy' },
+    pixel: { label: 'Pixelate', css: 'none', group: 'privacy' },
+}
+
+// Older Safari has no canvas filters; there, Blur falls back to a heavy mosaic
+const CANVAS_FILTERS = (() => {
+    if (typeof document === 'undefined') return true
+    const ctx = document.createElement('canvas').getContext('2d')
+    if (!ctx || !('filter' in ctx)) return false
+    ctx.filter = 'blur(2px)'
+    return ctx.filter === 'blur(2px)'
+})()
+
+const REACTIONS = ['❤️', '😂', '😮', '👏', '🔥', '👋']
+const CHAT_EMOJIS = ['😀', '😂', '🥹', '😊', '😍', '😎', '🤔', '😅', '🙌', '👍', '👋', '🙏', '🔥', '✨', '🎉', '❤️']
 
 interface Message {
     id: string
     text: string
-    sender: 'me' | 'stranger'
+    sender: 'me' | 'stranger' | 'system'
 }
 
 export default function Home() {
-    const [socket, setSocket] = useState<Socket | null>(null)
+    const [socket, setSocket] = useState<Signal | null>(null)
     const [isConnected, setIsConnected] = useState(false)
     const [isSearching, setIsSearching] = useState(false)
     const [isMatched, setIsMatched] = useState(false)
@@ -21,7 +62,6 @@ export default function Home() {
     const [remoteVideoReady, setRemoteVideoReady] = useState(false)
     const [hasRemoteStream, setHasRemoteStream] = useState(false) // Track when srcObject is set
     const [showPlayButton, setShowPlayButton] = useState(false)
-    const [isDarkMode, setIsDarkMode] = useState(true) // Dark mode by default
 
     // Video swap state - true means local is main, false means remote is main
     const [isLocalMain, setIsLocalMain] = useState(false)
@@ -50,6 +90,26 @@ export default function Home() {
 
     // Report state
     const [showReportModal, setShowReportModal] = useState(false)
+    // 18+ confirmation, asked once per browser before the first match
+    const [showAgeGate, setShowAgeGate] = useState(false)
+
+    // "Meet this person again?" The answer only ever narrows matching; silence means yes
+    const [lastPeer, setLastPeer] = useState<string | null>(null)
+    const [rematchAnswer, setRematchAnswer] = useState<'yes' | 'no' | null>(null)
+    const [strangerTyping, setStrangerTyping] = useState(false)
+
+    // Privacy filters run on this device before video is sent, so the raw face never leaves it
+    const [videoFilter, setVideoFilter] = useState<VideoFilter>('none')
+    const filterRef = useRef<VideoFilter>('none')
+    const filterPipeRef = useRef<{ timer: ReturnType<typeof setInterval>; track: MediaStreamTrack; video: HTMLVideoElement; renderer: FaceRenderer | null } | null>(null)
+    const [localPreview, setLocalPreview] = useState<MediaStream | null>(null)
+    const faceLmRef = useRef<FaceLandmarker | null>(null)
+    const faceRenderModRef = useRef<typeof import('@/lib/faceRender') | null>(null)
+    const [faceLoading, setFaceLoading] = useState(false)
+    const [openPanel, setOpenPanel] = useState<'none' | 'volume' | 'filters' | 'react'>('none')
+    const [floaters, setFloaters] = useState<{ id: string; e: string; x: number; mine: boolean }[]>([])
+    const [showEmojiPicker, setShowEmojiPicker] = useState(false)
+    const typingSentRef = useRef(0)
 
     const userId = useRef(uuidv4())
     const localVideoRef = useRef<HTMLVideoElement>(null)
@@ -57,85 +117,123 @@ export default function Home() {
     const localStreamRef = useRef<MediaStream | null>(null)
     const peerConnectionRef = useRef<RTCPeerConnection | null>(null)
     const messagesEndRef = useRef<HTMLDivElement>(null)
-    const canvasRef = useRef<HTMLCanvasElement | null>(null)
-    const animationFrameRef = useRef<number | null>(null)
-    const encryptionKeyRef = useRef<CryptoKey | null>(null) // Shared encryption key for E2E encryption
+    const encryptionKeyRef = useRef<CryptoKey | null>(null) // AES-GCM key derived via ECDH, never leaves this browser
+    const keyPairPromiseRef = useRef<Promise<CryptoKeyPair> | null>(null) // Ephemeral ECDH key pair for the current match
+    const myPublicKeyRef = useRef<string | null>(null)
+    const peerPublicKeyRef = useRef<string | null>(null)
+    const [chatReady, setChatReady] = useState(false)
+    const [safetyCode, setSafetyCode] = useState<string | null>(null)
+    const [callEnded, setCallEnded] = useState<string | null>(null) // Shown after a call ends
+    const [notice, setNotice] = useState<string | null>(null) // Small toast, e.g. report confirmation
     const pendingIceCandidatesRef = useRef<RTCIceCandidate[]>([]) // Queue ICE candidates until strangerId is ready
     const pendingReceivedIceCandidatesRef = useRef<RTCIceCandidateInit[]>([]) // Queue ICE candidates received before peer connection is ready
-    const socketRef = useRef<Socket | null>(null) // Ref to access current socket in ICE candidate handler
+    const socketRef = useRef<Signal | null>(null) // Ref to access current socket in ICE candidate handler
     const strangerIdRef = useRef<string | null>(null) // Ref to access current strangerId in ICE candidate handler
 
-    // End-to-End Encryption Functions (using Web Crypto API - FREE, built into browsers)
-    const generateEncryptionKey = async (user1Id: string, user2Id: string): Promise<CryptoKey> => {
-        // Create a deterministic key from both user IDs (same key for both users)
-        const keyMaterial = `${user1Id}:${user2Id}` // Combined string
-        const encoder = new TextEncoder()
-        const data = encoder.encode(keyMaterial)
+    // End-to-end encrypted chat (Web Crypto API, built into every browser, free)
+    // Each match creates a fresh ECDH P-256 key pair. Only the public halves cross the
+    // server, so the server cannot derive the AES key and cannot read messages.
+    const toB64 = (buf: ArrayBuffer | Uint8Array) => {
+        const bytes = buf instanceof Uint8Array ? buf : new Uint8Array(buf)
+        return btoa(Array.from(bytes, b => String.fromCharCode(b)).join(''))
+    }
+    const fromB64 = (s: string) => Uint8Array.from(atob(s), c => c.charCodeAt(0))
+    const encoder = new TextEncoder()
 
-        // Hash the combined string to get consistent key material
-        const hashBuffer = await crypto.subtle.digest('SHA-256', data)
+    const startKeyExchange = (): Promise<CryptoKeyPair> => {
+        // Private key is non-extractable: it cannot leave this tab even via script
+        const pair = crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, false, ['deriveBits']) as Promise<CryptoKeyPair>
+        keyPairPromiseRef.current = pair
+        return pair
+    }
 
-        // Import the key for AES-GCM encryption
-        const key = await crypto.subtle.importKey(
-            'raw',
-            hashBuffer,
+    const completeKeyExchange = async (peerPublicKeyB64: string) => {
+        const pair = await keyPairPromiseRef.current
+        if (!pair) return
+        const myPub = toB64(await crypto.subtle.exportKey('raw', pair.publicKey))
+        const peerKey = await crypto.subtle.importKey('raw', fromB64(peerPublicKeyB64), { name: 'ECDH', namedCurve: 'P-256' }, false, [])
+        const shared = await crypto.subtle.deriveBits({ name: 'ECDH', public: peerKey }, pair.privateKey, 256)
+
+        // HKDF turns the raw shared secret into a proper AES key, bound to both public keys
+        const salt = await crypto.subtle.digest('SHA-256', encoder.encode([myPub, peerPublicKeyB64].sort().join('|')))
+        const hkdfKey = await crypto.subtle.importKey('raw', shared, 'HKDF', false, ['deriveKey'])
+        encryptionKeyRef.current = await crypto.subtle.deriveKey(
+            { name: 'HKDF', hash: 'SHA-256', salt, info: encoder.encode('strangers-connect chat v1') },
+            hkdfKey,
             { name: 'AES-GCM', length: 256 },
             false,
             ['encrypt', 'decrypt']
         )
+        myPublicKeyRef.current = myPub
+        peerPublicKeyRef.current = peerPublicKeyB64
+        setChatReady(true)
+    }
 
-        return key
+    // Short code both people can read aloud. It covers the chat keys and the DTLS
+    // fingerprints of the video call, so a man-in-the-middle would make the codes differ.
+    const computeSafetyCode = async (): Promise<string | null> => {
+        const pc = peerConnectionRef.current
+        const fingerprint = (sdp?: string) => sdp?.match(/a=fingerprint:\S+ (\S+)/)?.[1]
+        const local = fingerprint(pc?.localDescription?.sdp)
+        const remote = fingerprint(pc?.remoteDescription?.sdp)
+        if (!local || !remote || !myPublicKeyRef.current || !peerPublicKeyRef.current) return null
+        const material = [local, remote, myPublicKeyRef.current, peerPublicKeyRef.current].sort().join('|')
+        const hash = new Uint8Array(await crypto.subtle.digest('SHA-256', encoder.encode(material)))
+        const n = ((hash[0] << 16) | (hash[1] << 8) | hash[2]) % 1000000
+        const s = n.toString().padStart(6, '0')
+        return `${s.slice(0, 3)} ${s.slice(3)}`
+    }
+
+    const resetEncryption = () => {
+        encryptionKeyRef.current = null
+        keyPairPromiseRef.current = null
+        myPublicKeyRef.current = null
+        peerPublicKeyRef.current = null
+        setChatReady(false)
+        setSafetyCode(null)
     }
 
     const encryptMessage = async (text: string, key: CryptoKey): Promise<string> => {
-        const encoder = new TextEncoder()
-        const data = encoder.encode(text)
-
-        // Generate a random IV (initialization vector) for each message
-        const iv = crypto.getRandomValues(new Uint8Array(12))
-
-        // Encrypt the message
-        const encryptedData = await crypto.subtle.encrypt(
-            { name: 'AES-GCM', iv: iv },
-            key,
-            data
-        )
-
-        // Combine IV and encrypted data, then encode as base64
+        const iv = crypto.getRandomValues(new Uint8Array(12)) // fresh IV per message
+        const encryptedData = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, encoder.encode(text))
         const combined = new Uint8Array(iv.length + encryptedData.byteLength)
         combined.set(iv)
         combined.set(new Uint8Array(encryptedData), iv.length)
-
-        // Convert to base64 for transmission
-        const binaryString = Array.from(combined, byte => String.fromCharCode(byte)).join('')
-        return btoa(binaryString)
+        return toB64(combined)
     }
 
+    // Throws if the message was tampered with or not encrypted with our shared key
     const decryptMessage = async (encryptedText: string, key: CryptoKey): Promise<string> => {
-        try {
-            // Decode from base64
-            const combined = Uint8Array.from(atob(encryptedText), c => c.charCodeAt(0))
-
-            // Extract IV (first 12 bytes) and encrypted data (rest)
-            const iv = combined.slice(0, 12)
-            const encryptedData = combined.slice(12)
-
-            // Decrypt
-            const decryptedData = await crypto.subtle.decrypt(
-                { name: 'AES-GCM', iv: iv },
-                key,
-                encryptedData
-            )
-
-            // Convert back to string
-            const decoder = new TextDecoder()
-            return decoder.decode(decryptedData)
-        } catch (error) {
-            console.error('❌ Decryption error:', error)
-            // If decryption fails, return original (for backward compatibility)
-            return encryptedText
-        }
+        const combined = fromB64(encryptedText)
+        const decryptedData = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: combined.slice(0, 12) }, key, combined.slice(12))
+        return new TextDecoder().decode(decryptedData)
     }
+
+    // Safety code becomes available once both keys and both SDPs are in place
+    useEffect(() => {
+        if (!isMatched || !chatReady) return
+        let cancelled = false
+        const tick = async () => {
+            const code = await computeSafetyCode()
+            if (code && !cancelled) {
+                setSafetyCode(code)
+                clearInterval(id)
+            }
+        }
+        const id = setInterval(tick, 1000)
+        tick()
+        return () => {
+            cancelled = true
+            clearInterval(id)
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isMatched, chatReady])
+
+    useEffect(() => {
+        if (!notice) return
+        const t = setTimeout(() => setNotice(null), 4500)
+        return () => clearTimeout(t)
+    }, [notice])
 
     // Auto-scroll messages
     useEffect(() => {
@@ -149,118 +247,6 @@ export default function Home() {
         }
     }, [remoteAudioVolume, hasRemoteStream])
 
-    // Particle Network Background Animation
-    useEffect(() => {
-        const canvas = document.getElementById('particle-network') as HTMLCanvasElement
-        if (!canvas) return
-
-        canvasRef.current = canvas
-        const ctx = canvas.getContext('2d')
-        if (!ctx) return
-
-        // Set canvas size
-        const resizeCanvas = () => {
-            canvas.width = window.innerWidth
-            canvas.height = window.innerHeight
-        }
-        resizeCanvas()
-        window.addEventListener('resize', resizeCanvas)
-
-        // Particle class
-        class Particle {
-            x: number
-            y: number
-            vx: number
-            vy: number
-            radius: number
-
-            constructor(canvasWidth: number, canvasHeight: number) {
-                this.x = Math.random() * canvasWidth
-                this.y = Math.random() * canvasHeight
-                this.vx = (Math.random() - 0.5) * 0.5
-                this.vy = (Math.random() - 0.5) * 0.5
-                this.radius = Math.random() * 2 + 1
-            }
-
-            update(canvasWidth: number, canvasHeight: number) {
-                this.x += this.vx
-                this.y += this.vy
-
-                // Bounce off edges
-                if (this.x < 0 || this.x > canvasWidth) this.vx *= -1
-                if (this.y < 0 || this.y > canvasHeight) this.vy *= -1
-
-                // Keep particles in bounds
-                this.x = Math.max(0, Math.min(canvasWidth, this.x))
-                this.y = Math.max(0, Math.min(canvasHeight, this.y))
-            }
-
-            draw(ctx: CanvasRenderingContext2D) {
-                ctx.beginPath()
-                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2)
-                ctx.fillStyle = 'rgba(59, 130, 246, 0.8)'
-                ctx.fill()
-                
-                // Glow effect
-                ctx.shadowBlur = 10
-                ctx.shadowColor = 'rgba(59, 130, 246, 0.8)'
-                ctx.fill()
-                ctx.shadowBlur = 0
-            }
-        }
-
-        // Create particles
-        const particleCount = Math.min(80, Math.floor((canvas.width * canvas.height) / 15000))
-        const particles: Particle[] = []
-        for (let i = 0; i < particleCount; i++) {
-            particles.push(new Particle(canvas.width, canvas.height))
-        }
-
-        // Connection distance
-        const connectionDistance = 150
-
-        // Animation loop
-        const animate = () => {
-            ctx.clearRect(0, 0, canvas.width, canvas.height)
-
-            // Update and draw particles
-            particles.forEach(particle => {
-                particle.update(canvas.width, canvas.height)
-                particle.draw(ctx)
-            })
-
-            // Draw connections
-            for (let i = 0; i < particles.length; i++) {
-                for (let j = i + 1; j < particles.length; j++) {
-                    const dx = particles[i].x - particles[j].x
-                    const dy = particles[i].y - particles[j].y
-                    const distance = Math.sqrt(dx * dx + dy * dy)
-
-                    if (distance < connectionDistance) {
-                        const opacity = (1 - distance / connectionDistance) * 0.3
-                        ctx.beginPath()
-                        ctx.moveTo(particles[i].x, particles[i].y)
-                        ctx.lineTo(particles[j].x, particles[j].y)
-                        ctx.strokeStyle = `rgba(59, 130, 246, ${opacity})`
-                        ctx.lineWidth = 1
-                        ctx.stroke()
-                    }
-                }
-            }
-
-            animationFrameRef.current = requestAnimationFrame(animate)
-        }
-
-        animate()
-
-        // Cleanup
-        return () => {
-            window.removeEventListener('resize', resizeCanvas)
-            if (animationFrameRef.current) {
-                cancelAnimationFrame(animationFrameRef.current)
-            }
-        }
-    }, [])
 
     // AGGRESSIVE video monitoring and recovery - runs continuously
     useEffect(() => {
@@ -330,13 +316,22 @@ export default function Home() {
     }, [isMatched, remoteVideoReady])
 
     // Initialize WebRTC peer connection
-    const createPeerConnection = (currentSocket: Socket | null, currentStrangerId: string | null) => {
+    const createPeerConnection = (currentSocket: Signal | null, currentStrangerId: string | null) => {
         const pc = new RTCPeerConnection({
             iceServers: [
                 // STUN servers for NAT discovery (works for most same-network connections)
                 { urls: 'stun:stun.l.google.com:19302' },
                 { urls: 'stun:stun1.l.google.com:19302' },
                 { urls: 'stun:stun2.l.google.com:19302' },
+                // Optional free TURN relay (e.g. Cloudflare Realtime or Metered) for users behind strict NATs.
+                // TURN only forwards already-encrypted SRTP packets; it cannot see the video.
+                ...(process.env.NEXT_PUBLIC_TURN_URLS
+                    ? [{
+                        urls: process.env.NEXT_PUBLIC_TURN_URLS.split(','),
+                        username: process.env.NEXT_PUBLIC_TURN_USERNAME,
+                        credential: process.env.NEXT_PUBLIC_TURN_CREDENTIAL,
+                    }]
+                    : []),
                 // Note: TURN servers removed due to timeout issues
                 // For production, you'll need to set up your own TURN server
                 // STUN-only should work for same-network connections
@@ -811,10 +806,14 @@ export default function Home() {
             console.log('🎤 Audio tracks:', stream.getAudioTracks().length)
 
             localStreamRef.current = stream
+            const rawVideo = stream.getVideoTracks()[0]
+            const outVideo = rawVideo && filterRef.current !== 'none' ? buildFilteredTrack(rawVideo) : rawVideo
+            if (FILTERS[filterRef.current].face) ensureFaceTracker()
+            setLocalPreview(outVideo ? new MediaStream([outVideo]) : null)
 
             // Ensure local video is visible
             if (localVideoRef.current) {
-                localVideoRef.current.srcObject = stream
+                localVideoRef.current.srcObject = outVideo ? new MediaStream([outVideo]) : stream
                 localVideoRef.current.playsInline = true
                 localVideoRef.current.autoplay = true
                 localVideoRef.current.muted = true
@@ -831,7 +830,9 @@ export default function Home() {
             const pc = createPeerConnection(socketRef.current, null) // strangerId not available yet in startVideo
 
             // Add all tracks - CRITICAL for sending video
-            stream.getTracks().forEach((track) => {
+            // With a filter on, the canvas track is sent instead of the raw camera
+            const outgoing = [...stream.getAudioTracks(), ...(outVideo ? [outVideo] : [])]
+            outgoing.forEach((track) => {
                 const sender = pc.addTrack(track, stream)
                 console.log('➕ Added track:', track.kind, '- Enabled:', track.enabled, '- ReadyState:', track.readyState)
 
@@ -850,8 +851,183 @@ export default function Home() {
         }
     }
 
+    // Draws the camera into a canvas with the chosen filter and returns the canvas track
+    const buildFilteredTrack = (raw: MediaStreamTrack): MediaStreamTrack => {
+        stopFilterPipe()
+        const settings = raw.getSettings()
+        const scale = Math.min(1, 640 / (settings.width || 640))
+        const w = Math.round((settings.width || 640) * scale)
+        const h = Math.round((settings.height || 480) * scale)
+        const canvas = document.createElement('canvas')
+        canvas.width = w
+        canvas.height = h
+        const ctx = canvas.getContext('2d')!
+        const small = document.createElement('canvas')
+        const sctx = small.getContext('2d')!
+        const frame = document.createElement('canvas')
+        frame.width = w
+        frame.height = h
+        const fctx = frame.getContext('2d')!
+        const scratch = document.createElement('canvas')
+        let lastFace: { lm: NormalizedLandmark[]; at: number } | null = null
+        const video = document.createElement('video')
+        video.muted = true
+        video.playsInline = true
+        video.srcObject = new MediaStream([raw])
+        video.play().catch(() => {})
+
+        const draw = () => {
+            if (video.readyState < 2) return
+            const f = filterRef.current
+            if (f === 'pixel' || (f === 'blur' && !CANVAS_FILTERS)) {
+                // Mosaic: shrink then stretch without smoothing. Works in every browser.
+                const block = f === 'pixel' ? 14 : 22
+                small.width = Math.max(1, Math.round(w / block))
+                small.height = Math.max(1, Math.round(h / block))
+                sctx.drawImage(video, 0, 0, small.width, small.height)
+                ctx.imageSmoothingEnabled = false
+                ctx.drawImage(small, 0, 0, w, h)
+                return
+            }
+            const def = FILTERS[f]
+            if (def.face) {
+                fctx.drawImage(video, 0, 0, w, h)
+                const lmk = faceLmRef.current
+                if (lmk) {
+                    try {
+                        const res = lmk.detectForVideo(frame, performance.now())
+                        if (res.faceLandmarks[0]) lastFace = { lm: res.faceLandmarks[0], at: performance.now() }
+                    } catch {
+                        // a dropped frame is fine
+                    }
+                }
+                // Keep the effect on through brief tracking blips
+                const lm = lastFace && performance.now() - lastFace.at < 400 ? lastFace.lm : null
+                const pipe = filterPipeRef.current
+                if ((def.paint || def.warp) && pipe && faceRenderModRef.current) {
+                    if (!pipe.renderer) {
+                        try {
+                            pipe.renderer = new faceRenderModRef.current.FaceRenderer(frame)
+                        } catch (error) {
+                            console.error('WebGL unavailable for face effects:', error)
+                        }
+                    }
+                }
+                if ((def.paint || def.warp) && pipe?.renderer) {
+                    ctx.drawImage(pipe.renderer.render(lm, { warp: def.warp, paint: def.paint }), 0, 0)
+                } else {
+                    ctx.drawImage(frame, 0, 0)
+                }
+                if (def.prop && lm) drawFaceFx(ctx, frame, lm, def.prop as FaceFx, scratch)
+                return
+            }
+            ctx.filter = CANVAS_FILTERS ? FILTERS[f].css : 'none'
+            ctx.drawImage(video, 0, 0, w, h)
+            ctx.filter = 'none'
+        }
+        const timer = setInterval(draw, 1000 / 24)
+        const track = canvas.captureStream(24).getVideoTracks()[0]
+        filterPipeRef.current = { timer, track, video, renderer: null }
+        return track
+    }
+
+    const stopFilterPipe = () => {
+        const pipe = filterPipeRef.current
+        if (!pipe) return
+        clearInterval(pipe.timer)
+        pipe.renderer?.dispose()
+        pipe.track.stop()
+        pipe.video.srcObject = null
+        filterPipeRef.current = null
+    }
+
+    const ensureFaceTracker = async () => {
+        if (faceLmRef.current && faceRenderModRef.current) return true
+        setFaceLoading(true)
+        try {
+            const [lmk, mod] = await Promise.all([loadFaceLandmarker(), import('@/lib/faceRender')])
+            faceLmRef.current = lmk
+            faceRenderModRef.current = mod
+            return true
+        } catch (error) {
+            console.error('Face filters unavailable:', error)
+            setNotice('Face filters are not supported on this device.')
+            return false
+        } finally {
+            setFaceLoading(false)
+        }
+    }
+
+    const chooseFilter = async (f: VideoFilter) => {
+        if (FILTERS[f].face && !(await ensureFaceTracker())) f = 'none'
+        setVideoFilter(f)
+        filterRef.current = f
+        try {
+            localStorage.setItem('sc-filter', f)
+        } catch {
+            // ignore
+        }
+        const raw = localStreamRef.current?.getVideoTracks()[0]
+        if (!raw) return
+        const sender = peerConnectionRef.current?.getSenders().find((x) => x.track?.kind === 'video')
+        if (f === 'none') {
+            await sender?.replaceTrack(raw)
+            stopFilterPipe()
+            setLocalPreview(new MediaStream([raw]))
+            return
+        }
+        // Already filtering: the draw loop reads filterRef, so just keep the same track
+        if (filterPipeRef.current) return
+        const out = buildFilteredTrack(raw)
+        await sender?.replaceTrack(out)
+        setLocalPreview(new MediaStream([out]))
+    }
+
+    // Remember the filter between visits
+    useEffect(() => {
+        try {
+            const saved = localStorage.getItem('sc-filter') as VideoFilter | null
+            if (saved && saved in FILTERS) {
+                setVideoFilter(saved)
+                filterRef.current = saved
+            }
+        } catch {
+            // ignore
+        }
+    }, [])
+
+    // The self-view only exists once a match renders, so attach the stream whenever it appears
+    useEffect(() => {
+        const el = localVideoRef.current
+        if (!el || !isMatched || !localPreview) return
+        if (el.srcObject !== localPreview) {
+            el.srcObject = localPreview
+            el.play().catch(() => {})
+        }
+    }, [isMatched, localPreview, isLocalMain])
+
+    const spawnFloater = (e: string, mine: boolean) => {
+        const id = uuidv4()
+        setFloaters((prev) => [...prev.slice(-12), { id, e, x: 10 + Math.random() * 80, mine }])
+        setTimeout(() => setFloaters((prev) => prev.filter((f) => f.id !== id)), 2600)
+    }
+
+    // Everything sent to the stranger is a small JSON payload, encrypted end to end
+    const sendPayload = async (payload: { k: 'msg'; t: string } | { k: 'react'; e: string }) => {
+        if (!socket || !strangerId || !encryptionKeyRef.current) return false
+        const ciphertext = await encryptMessage(JSON.stringify(payload), encryptionKeyRef.current)
+        socket.emit('send-message', { text: ciphertext, to: strangerId, encrypted: true })
+        return true
+    }
+
+    const sendReaction = async (e: string) => {
+        if (await sendPayload({ k: 'react', e })) spawnFloater(e, true)
+    }
+
     // Stop video
     const stopVideo = () => {
+        stopFilterPipe()
+        setLocalPreview(null)
         localStreamRef.current?.getTracks().forEach((track) => track.stop())
         localStreamRef.current = null
         peerConnectionRef.current?.close()
@@ -913,9 +1089,9 @@ export default function Home() {
                 reportedUserId: strangerId,
                 reason: 'Inappropriate content'
             })
-            console.log('🚨 Report submitted for user:', strangerId)
-            // Disconnect after reporting
+            // Disconnect after reporting; the server also stops you being matched again
             disconnect()
+            setRematchAnswer('no')
         }
         setShowReportModal(false)
     }
@@ -926,12 +1102,12 @@ export default function Home() {
 
     // Socket.io connection
     useEffect(() => {
-        const newSocket = io(process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3001')
+        const newSocket = new Signal(process.env.NEXT_PUBLIC_SIGNAL_URL || 'ws://localhost:8787/ws')
 
         newSocket.on('connect', () => {
             console.log('✅ Connected')
             setIsConnected(true)
-            newSocket.emit('register', userId.current)
+            newSocket.emit('register', { userId: userId.current, deviceId: deviceId() })
         })
 
         newSocket.on('disconnect', () => {
@@ -956,13 +1132,17 @@ export default function Home() {
             setStrangerId(data.strangerId)
             strangerIdRef.current = data.strangerId // Update ref immediately
 
-            // Generate shared encryption key for E2E encryption
-            // Use deterministic order (smaller ID first) so both users get same key
-            const sortedIds = [userId.current, data.strangerId].sort()
-            encryptionKeyRef.current = await generateEncryptionKey(sortedIds[0], sortedIds[1])
-            console.log('🔐 End-to-end encryption key generated')
+            // Fresh ECDH key pair for this match; only the public half goes through the server
+            window.scrollTo({ top: 0, behavior: 'smooth' })
+            setCallEnded(null)
+            resetEncryption()
+            const keyPair = await startKeyExchange()
+            newSocket.emit('key-exchange', {
+                publicKey: toB64(await crypto.subtle.exportKey('raw', keyPair.publicKey)),
+                to: data.strangerId,
+            })
 
-            setMessages([{ id: uuidv4(), text: '🎥 Starting video...', sender: 'stranger' }])
+            setMessages([])
 
             // ALWAYS start video for BOTH users - no matter who creates offer
             console.log('🎥 Starting camera...')
@@ -1225,30 +1405,22 @@ export default function Home() {
             setIsMatched(false)
             setIsSearching(false)
             stopVideo()
-            setMessages([{ 
-                id: uuidv4(), 
-                text: `🚫 Account Banned: ${data.reason}`, 
-                sender: 'stranger' 
-            }])
-            // Show ban message
-            alert(`🚫 Account Banned\n\n${data.reason}\n\nYou will be disconnected from the service.`)
+            resetEncryption()
+            setCallEnded(data.reason)
             if (newSocket) {
                 newSocket.disconnect()
             }
         })
 
         newSocket.on('report-confirmed', (data: { message: string; reportCount?: number; threshold?: number }) => {
-            console.log('✅ Report confirmed:', data.message)
-            // Show confirmation (will be shown after modal closes)
-            if (data.reportCount && data.threshold) {
-                setTimeout(() => {
-                    alert(`✅ ${data.message}\n\nThis user now has ${data.reportCount}/${data.threshold} reports.`)
-                }, 100)
-            }
+            setNotice(data.message)
         })
 
         newSocket.on('disconnected', () => {
             setIsMatched(false)
+            setLastPeer(strangerIdRef.current)
+            setRematchAnswer(null)
+            setStrangerTyping(false)
             setStrangerId(null)
             setHasRemoteStream(false) // Reset stream state
             setRemoteVideoReady(false) // Reset ready state
@@ -1259,23 +1431,49 @@ export default function Home() {
             // Reset camera state
             setIsLocalCameraEnabled(true)
             stopVideo()
-            setMessages([{ id: uuidv4(), text: 'Stranger disconnected', sender: 'stranger' }])
+            resetEncryption()
+            setMessages([])
+            setCallEnded('The other person left the conversation.')
         })
 
-        newSocket.on('message', async (data: { text: string; encrypted?: boolean }) => {
-            // Decrypt message if encryption key is available
-            let decryptedText = data.text
-            if (encryptionKeyRef.current) {
-                try {
-                    decryptedText = await decryptMessage(data.text, encryptionKeyRef.current)
-                    console.log('🔓 Decrypted message')
-                } catch (error) {
-                    console.error('❌ Failed to decrypt message:', error)
-                    // Fallback: show encrypted text with indicator
-                    decryptedText = '[Encrypted message - decryption failed]'
-                }
+        newSocket.on('key-exchange', async (data: { publicKey: string; from: string }) => {
+            if (data.from !== strangerIdRef.current) return
+            try {
+                await completeKeyExchange(data.publicKey)
+            } catch (error) {
+                console.error('Key exchange failed:', error)
             }
-            setMessages((prev) => [...prev, { id: uuidv4(), text: decryptedText, sender: 'stranger' }])
+        })
+
+        let typingTimer: ReturnType<typeof setTimeout> | null = null
+        newSocket.on('typing', (data: { from: string; on: boolean }) => {
+            if (data.from !== strangerIdRef.current) return
+            setStrangerTyping(data.on)
+            if (typingTimer) clearTimeout(typingTimer)
+            typingTimer = setTimeout(() => setStrangerTyping(false), 3500)
+        })
+
+        newSocket.on('message', async (data: { text: string; encrypted?: boolean; from?: string }) => {
+            setStrangerTyping(false)
+            // Only show messages that the stranger's browser encrypted with our shared key
+            if (!data.encrypted || !encryptionKeyRef.current || data.from !== strangerIdRef.current) return
+            try {
+                const raw = await decryptMessage(data.text, encryptionKeyRef.current)
+                let payload: { k?: string; t?: string; e?: string } = {}
+                try {
+                    payload = JSON.parse(raw)
+                } catch {
+                    payload = { k: 'msg', t: raw }
+                }
+                if (payload.k === 'react') {
+                    if (payload.e && REACTIONS.includes(payload.e)) spawnFloater(payload.e, false)
+                } else if (typeof payload.t === 'string' && payload.t.trim()) {
+                    const text = payload.t.slice(0, 2000)
+                    setMessages((prev) => [...prev, { id: uuidv4(), text, sender: 'stranger' }])
+                }
+            } catch {
+                setMessages((prev) => [...prev, { id: uuidv4(), text: 'A message failed verification and was hidden.', sender: 'system' }])
+            }
         })
 
         setSocket(newSocket)
@@ -1286,10 +1484,36 @@ export default function Home() {
         }
     }, [])
 
+    const hasAgreed = () => {
+        try {
+            return localStorage.getItem('sc-agreed-v1') === 'yes'
+        } catch {
+            return false
+        }
+    }
+
+    // Every Start button goes through here so nobody is matched before confirming 18+
+    const requestStart = () => {
+        if (hasAgreed()) findStranger()
+        else setShowAgeGate(true)
+    }
+
+    const acceptRules = () => {
+        try {
+            localStorage.setItem('sc-agreed-v1', 'yes')
+        } catch {
+            // private mode: we ask again next visit
+        }
+        setShowAgeGate(false)
+        findStranger()
+    }
+
     const findStranger = () => {
         if (socket) {
+            window.scrollTo({ top: 0, behavior: 'smooth' })
+            setCallEnded(null)
             setIsSearching(true)
-            socket.emit('find-stranger', userId.current)
+            socket.emit('find-stranger')
         }
     }
 
@@ -1297,6 +1521,9 @@ export default function Home() {
         if (socket && strangerId) {
             socket.emit('disconnect-stranger', { strangerId })
             setIsMatched(false)
+            setLastPeer(strangerIdRef.current)
+            setRematchAnswer(null)
+            setStrangerTyping(false)
             setStrangerId(null)
             strangerIdRef.current = null // Reset ref
             setHasRemoteStream(false) // Reset stream state
@@ -1309,6 +1536,8 @@ export default function Home() {
             // Reset camera state
             setIsLocalCameraEnabled(true)
             stopVideo()
+            resetEncryption()
+            setCallEnded('You ended the conversation.')
         }
     }
 
@@ -1318,6 +1547,9 @@ export default function Home() {
             // Disconnect from current stranger
             socket.emit('disconnect-stranger', { strangerId })
             setIsMatched(false)
+            setLastPeer(strangerIdRef.current)
+            setRematchAnswer(null)
+            setStrangerTyping(false)
             setStrangerId(null)
             strangerIdRef.current = null // Reset ref
             setHasRemoteStream(false) // Reset stream state
@@ -1330,135 +1562,107 @@ export default function Home() {
             // Reset camera state
             setIsLocalCameraEnabled(true)
             stopVideo()
-            
+            resetEncryption()
+
             // Automatically search for next stranger
             setTimeout(() => {
                 setIsSearching(true)
-                socket.emit('find-stranger', userId.current)
+                socket.emit('find-stranger')
             }, 100) // Small delay to ensure cleanup completes
         }
     }
 
-    const sendMessage = async () => {
-        if (messageInput.trim() && socket && strangerId) {
-            const messageText = messageInput.trim()
+    useEffect(() => {
+        if (!isMatched) {
+            setOpenPanel('none')
+            setShowEmojiPicker(false)
+            setFloaters([])
+        }
+    }, [isMatched])
 
-            // Encrypt message before sending (if encryption key is available)
-            let messageToSend = messageText
-            if (encryptionKeyRef.current) {
-                try {
-                    messageToSend = await encryptMessage(messageText, encryptionKeyRef.current)
-                    console.log('🔐 Encrypted message before sending')
-                } catch (error) {
-                    console.error('❌ Failed to encrypt message:', error)
-                    // Fallback: send unencrypted (shouldn't happen, but safety)
-                    messageToSend = messageText
-                }
-            }
+    const answerRematch = (answer: 'yes' | 'no') => {
+        setRematchAnswer(answer)
+        if (answer === 'no' && socket && lastPeer) socket.emit('avoid', { peerId: lastPeer })
+    }
 
-            // Show message immediately (will be decrypted on other end)
-            setMessages((prev) => [...prev, { id: uuidv4(), text: messageText, sender: 'me' }])
+    const cancelSearch = () => {
+        socket?.emit('cancel-search')
+        setIsSearching(false)
+    }
 
-            // Send encrypted message through server (server can't read it)
-            socket.emit('send-message', {
-                text: messageToSend,
-                to: strangerId,
-                encrypted: !!encryptionKeyRef.current
-            })
-            setMessageInput('')
+    // Tell the stranger we are typing, at most once every 2 seconds
+    const onType = (value: string) => {
+        setMessageInput(value)
+        const now = Date.now()
+        if (socket && strangerId && value && now - typingSentRef.current > 2000) {
+            typingSentRef.current = now
+            socket.emit('typing', { to: strangerId, on: true })
         }
     }
 
-    return (
-        <div className={`min-h-screen transition-colors duration-300 relative overflow-hidden ${isDarkMode ? 'bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900' : 'bg-gradient-to-br from-yellow-50 via-white to-yellow-50'} ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-            {/* Animated Neural Network Background */}
-            <canvas
-                id="particle-network"
-                className="fixed inset-0 w-full h-full pointer-events-none"
-                style={{ zIndex: 0, opacity: isDarkMode ? 0.4 : 0.2 }}
-            />
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 relative z-10">
-                {/* Modern Header with Dark Mode Toggle */}
-                <div className="flex items-center justify-between mb-8">
-                    <div className="flex items-center gap-4">
-                        {/* Logo with Subtle Futuristic Effects */}
-                        <div className="relative">
-                            <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-yellow-400/10 via-yellow-500/15 to-yellow-400/10 blur-lg animate-pulse-slow"></div>
-                            <img
-                                src="/logo.png"
-                                alt="Strangers Connect Logo"
-                                className="h-12 w-12 object-contain rounded-2xl relative z-10 transition-all duration-300 hover:scale-110 hover:rotate-3"
-                                style={{
-                                    boxShadow: isDarkMode 
-                                        ? '0 0 10px rgba(234, 179, 8, 0.2), 0 0 20px rgba(234, 179, 8, 0.1)'
-                                        : '0 0 8px rgba(234, 179, 8, 0.15), 0 0 15px rgba(234, 179, 8, 0.1)'
-                                }}
-                                onError={(e) => {
-                                    // Hide logo if file not found - no fallback emoji
-                                    const target = e.target as HTMLImageElement
-                                    target.style.display = 'none'
-                                }}
-                            />
-                        </div>
-                        <div>
-                            <h1 className={`text-2xl sm:text-3xl font-bold transition-all duration-300 ${isDarkMode ? 'text-white glow-yellow' : 'text-gray-900'}`}>Strangers Connect</h1>
-                            <p className={`text-sm transition-all duration-300 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Connect • Chat • Video</p>
-                        </div>
-                    </div>
+    const sendMessage = async (preset?: string) => {
+        const messageText = (preset ?? messageInput).trim()
+        // Never send plaintext: wait until the key exchange has finished
+        if (!messageText || !socket || !strangerId || !encryptionKeyRef.current) return
+        try {
+            await sendPayload({ k: 'msg', t: messageText })
+            setMessages((prev) => [...prev, { id: uuidv4(), text: messageText, sender: 'me' }])
+            setMessageInput('')
+            setShowEmojiPicker(false)
+            typingSentRef.current = 0
+        } catch (error) {
+            console.error('Failed to encrypt message:', error)
+        }
+    }
 
-                    <div className="flex items-center gap-3">
-                        {/* Report Button - Only show when matched */}
+    const idle = !isMatched && !isSearching
+
+    return (
+        <div className="grain relative min-h-screen bg-ink-900 text-paper">
+            {/* Floating pill nav */}
+            <header className="sticky top-0 z-40 px-3 sm:px-6 pt-3">
+                <nav className="mx-auto max-w-page flex items-center justify-between gap-3 rounded-full border border-paper/10 bg-ink-900/70 backdrop-blur-xl pl-3 sm:pl-4 pr-2 py-2">
+                    <a href="/" className="flex items-center gap-2.5 min-w-0" aria-label="Strangers Connect home">
+                        <LogoMark className="h-8 w-8 shrink-0" />
+                        <span className="font-serif text-[22px] leading-none tracking-tight truncate">Strangers Connect</span>
+                    </a>
+
+                    {idle && !callEnded && (
+                        <div className="hidden md:flex items-center gap-7 text-sm text-paper-mute">
+                            <a href="#how" className="hover:text-paper transition-colors">How it works</a>
+                            <a href="#privacy" className="hover:text-paper transition-colors">Privacy</a>
+                            <a href="#faq" className="hover:text-paper transition-colors">FAQ</a>
+                        </div>
+                    )}
+
+                    <div className="flex items-center gap-2 shrink-0">
                         {isMatched && (
-                            <button
-                                onClick={handleReport}
-                                className={`p-2.5 rounded-xl transition-all duration-200 hover:scale-110 active:scale-95 ${isDarkMode
-                                    ? 'bg-red-600/80 hover:bg-red-500 text-white border border-red-500/50'
-                                    : 'bg-red-500/80 hover:bg-red-400 text-white border border-red-400/50'
-                                    } shadow-lg`}
-                                title="Report inappropriate content"
-                            >
-                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                                </svg>
+                            <button onClick={handleReport} className="btn-ghost px-3.5 py-2 text-sm text-danger border-danger/30 hover:border-danger/60" title="Report inappropriate behavior">
+                                <Icon name="flag" /> <span className="hidden sm:inline">Report</span>
                             </button>
                         )}
-
-                        {/* Connection Status */}
-                        <div className={`flex items-center gap-2 px-4 py-2 rounded-full ${isDarkMode ? 'bg-gray-800' : 'bg-gray-100'} ${isDarkMode ? 'border border-gray-700' : 'border border-gray-200'}`}>
-                            <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'} animate-pulse`}></div>
-                            <span className={`text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                {isConnected ? 'Online' : 'Offline'}
-                            </span>
-                        </div>
-
-                        {/* Dark Mode Toggle */}
-                        <button
-                            onClick={() => setIsDarkMode(!isDarkMode)}
-                            className={`p-3 rounded-xl transition-all duration-300 ${isDarkMode ? 'bg-gray-800 hover:bg-gray-700 border border-gray-700' : 'bg-yellow-100 hover:bg-yellow-200 border border-yellow-300'}`}
-                            title={isDarkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
-                        >
-                            {isDarkMode ? (
-                                <svg className="w-5 h-5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
-                                    <path fillRule="evenodd" d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z" clipRule="evenodd" />
-                                </svg>
-                            ) : (
-                                <svg className="w-5 h-5 text-gray-700" fill="currentColor" viewBox="0 0 20 20">
-                                    <path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z" />
-                                </svg>
-                            )}
-                        </button>
+                        {idle && (
+                            <button onClick={requestStart} disabled={!isConnected} className="btn-primary px-4 py-2 text-sm">
+                                Start
+                            </button>
+                        )}
                     </div>
-                </div>
+                </nav>
+            </header>
 
-                {/* Video Container - ALWAYS in DOM, never display:none (breaks MediaStream loading) */}
-                {/* Mobile: Portrait (9/16), Desktop: Landscape (16/9) */}
-                <div
-                    className={`video-container mb-6 rounded-2xl relative cursor-pointer shadow-2xl overflow-hidden transition-all duration-300 ${isDarkMode ? 'bg-black border border-gray-800' : 'bg-black border border-gray-200'}`}
+            {/* Call area. The video container stays mounted at all times (MediaStreams need it). */}
+            <div className={isMatched ? 'mx-auto max-w-[1600px] px-3 sm:px-6 pt-4 sm:pt-5 pb-8 grid lg:grid-cols-[minmax(0,1fr)_360px] gap-3 sm:gap-4 relative z-10' : 'relative z-10'}>
+                <div className="flex flex-col gap-4 min-w-0">
+                    <div className="relative">
+                        <div
+                    className={`video-container rounded-3xl relative cursor-pointer overflow-hidden transition-all duration-300 bg-black border border-paper/10`}
                     style={{
                         display: 'block', // Always block - never none (MediaStreams need visible parent)
                         opacity: isMatched ? '1' : '0', // Hide visually but keep in DOM
                         pointerEvents: isMatched ? 'auto' : 'none',
-                        height: isMatched ? 'auto' : '0', // Collapse when not matched
+                        height: isMatched ? undefined : '0', // Collapse when not matched; CSS sizes it otherwise
+                        minHeight: isMatched ? undefined : '0',
+                        maxHeight: isMatched ? undefined : '0',
                         overflow: 'hidden', // Keep overflow hidden but ensure video fills container
                         position: 'relative' // Establish positioning context
                     }}
@@ -1478,19 +1682,19 @@ export default function Home() {
                     {/* CRITICAL: Key prop prevents React reusing, always rendered */}
                     {/* Swaps between main view and PIP based on isLocalMain */}
                     <div
-                        className={`absolute overflow-hidden transition-all duration-300 ease-in-out cursor-grab rounded-2xl ${isDarkMode ? 'border-2 border-white/20' : 'border-2 border-gray-300'} shadow-2xl`}
+                        className={`absolute overflow-hidden transition-all duration-300 ease-in-out cursor-grab rounded-2xl border border-paper/20 shadow-2xl`}
                         style={{
                             opacity: isMatched ? '1' : '0.01',
                             display: isMatched ? 'block' : 'none',
                             visibility: isMatched ? 'visible' : 'hidden',
                             // If isLocalMain is true, remote becomes PIP (small, bottom-right)
                             // If isLocalMain is false, remote is main (full screen)
-                            width: isLocalMain ? '192px' : '100%',
-                            height: isLocalMain ? '144px' : '100%',
-                            top: isLocalMain ? 'auto' : '0',
+                            width: isLocalMain ? 'var(--pip-w)' : '100%',
+                            height: isLocalMain ? 'var(--pip-h)' : '100%',
+                            top: isLocalMain ? '14px' : '0',
                             left: isLocalMain ? 'auto' : '0',
-                            right: isLocalMain ? '16px' : '0',
-                            bottom: isLocalMain ? '16px' : '0',
+                            right: isLocalMain ? '14px' : '0',
+                            bottom: isLocalMain ? 'auto' : '0',
                             zIndex: isLocalMain ? 20 : 15,
                             pointerEvents: isMatched ? 'auto' : 'none',
                             cursor: remoteVideoDragging ? 'grabbing' : 'grab'
@@ -1650,7 +1854,7 @@ export default function Home() {
 
                     {/* Play Button - Shown when autoplay is blocked */}
                     {showPlayButton && (
-                        <div className={`absolute inset-0 flex items-center justify-center backdrop-blur-sm z-20 ${isDarkMode ? 'bg-black/80' : 'bg-black/70'}`}>
+                        <div className={`absolute inset-0 flex items-center justify-center backdrop-blur-sm z-20 bg-black/80`}>
                             <button
                                 onClick={(e) => {
                                     e.stopPropagation()
@@ -1663,12 +1867,9 @@ export default function Home() {
                                             .catch(err => console.error('Button play failed:', err))
                                     }
                                 }}
-                                className={`px-8 py-4 rounded-xl font-semibold text-lg transition-all duration-200 shadow-2xl hover:shadow-3xl transform hover:scale-105 active:scale-95 ${isDarkMode
-                                    ? 'bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-400 hover:to-yellow-500 text-black shadow-yellow-500/50'
-                                    : 'bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-300 hover:to-yellow-400 text-black shadow-yellow-400/50'
-                                    }`}
+                                className="btn-primary px-7 py-3.5 text-[15px]"
                             >
-                                ▶️ Click to See Stranger
+                                Tap to see your stranger
                             </button>
                         </div>
                     )}
@@ -1678,10 +1879,10 @@ export default function Home() {
                         const hasSrcObject = remoteVideoRef.current?.srcObject !== null && remoteVideoRef.current?.srcObject !== undefined
                         return !hasSrcObject && !remoteVideoReady && isMatched
                     })() && (
-                            <div className={`absolute inset-0 flex items-center justify-center z-10 ${isDarkMode ? 'bg-gray-900/80' : 'bg-gray-100/80'} backdrop-blur-sm`}>
+                            <div className={`absolute inset-0 flex items-center justify-center z-10 bg-ink-900/90 backdrop-blur-sm`}>
                                 <div className="text-center">
-                                    <div className={`text-6xl mb-4 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>👤</div>
-                                    <p className={isDarkMode ? 'text-gray-300' : 'text-gray-600'}>Waiting for stranger's video...</p>
+                                    <div className="mx-auto mb-4 flex justify-center"><SearchRings /></div>
+                                    <p className="text-paper-dim text-sm">Connecting video…</p>
                                 </div>
                             </div>
                         )}
@@ -1689,16 +1890,16 @@ export default function Home() {
                     {/* Local Video - Swaps between main view and PIP based on isLocalMain */}
                     {isMatched && (
                         <div
-                            className={`absolute overflow-hidden transition-all duration-300 ease-in-out cursor-grab rounded-2xl ${isDarkMode ? 'border-2 border-white/20' : 'border-2 border-gray-300'} shadow-2xl`}
+                            className={`absolute overflow-hidden transition-all duration-300 ease-in-out cursor-grab rounded-2xl border border-paper/20 shadow-2xl`}
                             style={{
                                 // If isLocalMain is true, local is main (full screen)
                                 // If isLocalMain is false, local is PIP (small, bottom-right)
-                                width: isLocalMain ? '100%' : '192px',
-                                height: isLocalMain ? '100%' : '144px',
-                                top: isLocalMain ? '0' : 'auto',
+                                width: isLocalMain ? '100%' : 'var(--pip-w)',
+                                height: isLocalMain ? '100%' : 'var(--pip-h)',
+                                top: isLocalMain ? '0' : '14px',
                                 left: isLocalMain ? '0' : 'auto',
-                                right: isLocalMain ? '0' : '16px',
-                                bottom: isLocalMain ? '0' : '16px',
+                                right: isLocalMain ? '0' : '14px',
+                                bottom: isLocalMain ? '0' : 'auto',
                                 zIndex: isLocalMain ? 15 : 20,
                                 pointerEvents: 'auto',
                                 cursor: localVideoDragging ? 'grabbing' : 'grab'
@@ -1833,276 +2034,477 @@ export default function Home() {
                         </div>
                     )}
                 </div>
+                        {isMatched && (
+                            <div className="pointer-events-none absolute inset-0 z-30 overflow-hidden" aria-hidden="true">
+                                {floaters.map((f) => (
+                                    <span key={f.id} className="floater absolute bottom-20 text-4xl" style={{ left: `${f.x}%` }}>
+                                        {f.e}
+                                    </span>
+                                ))}
+                            </div>
+                        )}
+                        {isMatched && videoFilter !== 'none' && (
+                            <div className="pointer-events-none absolute left-3.5 top-12 z-30 rounded-full bg-black/45 backdrop-blur-md px-3 py-1 font-mono text-[10.5px] text-glow-soft animate-fade-in">
+                                {FILTERS[videoFilter].face ? FILTERS[videoFilter].label : `${FILTERS[videoFilter].label} privacy filter on`}
+                            </div>
+                        )}
+                        {isMatched && !isLocalMain && (
+                            <div className="pointer-events-none absolute right-3.5 z-30 font-mono text-[9.5px] text-paper-dim/80 swap-hint" style={{ top: 'calc(14px + var(--pip-h) + 6px)', width: 'var(--pip-w)', textAlign: 'center' }}>
+                                tap to swap
+                            </div>
+                        )}
+                        {isMatched && (
+                            <div className="pointer-events-none absolute left-3.5 top-3.5 z-30 flex items-center gap-2 rounded-full bg-black/45 backdrop-blur-md px-3 py-1.5 font-mono text-[10.5px] text-paper-dim animate-fade-in">
+                                <span className="h-1.5 w-1.5 rounded-full bg-glow breathe" />
+                                <span className="hidden sm:inline">live · peer-to-peer · </span>encrypted
+                            </div>
+                        )}
+
+                        {isMatched && (
+                            <div className="absolute inset-x-0 bottom-3 sm:bottom-5 z-30 flex flex-col items-center gap-2 px-3 dock-in">
+                                {openPanel === 'filters' && (
+                                    <div className="flex max-w-full items-center gap-1 overflow-x-auto rounded-full border border-paper/10 bg-ink-900/75 backdrop-blur-xl p-1.5 animate-fade-in scrollbar-none">
+                                        {(Object.keys(FILTERS) as VideoFilter[]).map((f) => (
+                                            <span key={f} className="contents">
+                                                {(f === 'neon' || f === 'blur') && <span className="mx-1 h-5 w-px shrink-0 bg-paper/15" aria-hidden="true" />}
+                                                <button
+                                                    onClick={() => chooseFilter(f)}
+                                                    disabled={faceLoading}
+                                                    className={`shrink-0 rounded-full px-3.5 py-2 text-[13px] transition disabled:opacity-50 ${videoFilter === f ? 'bg-paper text-ink-900' : 'text-paper-dim hover:bg-paper/10 hover:text-paper'}`}
+                                                >
+                                                    {FILTERS[f].label}
+                                                </button>
+                                            </span>
+                                        ))}
+                                        {faceLoading && <span className="shrink-0 px-2 font-mono text-[10.5px] text-paper-faint">loading…</span>}
+                                    </div>
+                                )}
+                                {openPanel === 'react' && (
+                                    <div className="flex gap-1 rounded-full border border-paper/10 bg-ink-900/75 backdrop-blur-xl p-1.5 animate-fade-in">
+                                        {REACTIONS.map((e) => (
+                                            <button
+                                                key={e}
+                                                onClick={() => sendReaction(e)}
+                                                disabled={!chatReady}
+                                                aria-label={`Send ${e}`}
+                                                className="h-10 w-10 grid place-items-center rounded-full text-[22px] transition hover:bg-paper/10 hover:scale-110 active:scale-95 disabled:opacity-40"
+                                            >
+                                                {e}
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+                                {openPanel === 'volume' && (
+                                    <div className="w-full max-w-sm rounded-2xl border border-paper/10 bg-ink-900/75 backdrop-blur-xl p-4 space-y-3 animate-fade-in">
+                                        {[
+                                            { label: 'Your mic', value: localAudioVolume, onChange: handleLocalVolumeChange },
+                                            { label: 'Their voice', value: remoteAudioVolume, onChange: handleRemoteVolumeChange },
+                                        ].map((v) => (
+                                            <label key={v.label} className="flex items-center gap-3 font-mono text-[11px] text-paper-mute">
+                                                <span className="w-20 shrink-0">{v.label}</span>
+                                                <input
+                                                    type="range"
+                                                    min="0"
+                                                    max="100"
+                                                    value={v.value}
+                                                    onChange={(e) => v.onChange(Number(e.target.value))}
+                                                    className="flex-1 h-1 rounded-full"
+                                                    style={{ background: `linear-gradient(to right, #ece9e2 ${v.value}%, rgba(236,233,226,0.15) ${v.value}%)` }}
+                                                />
+                                                <span className="w-9 text-right">{v.value}%</span>
+                                            </label>
+                                        ))}
+                                    </div>
+                                )}
+                                <div className="flex items-center gap-1.5 sm:gap-2 rounded-full border border-paper/10 bg-ink-900/60 backdrop-blur-xl p-1.5 shadow-[0_20px_60px_-20px_rgba(0,0,0,0.8)]">
+                                    <DockButton label={isLocalAudioMuted ? 'Unmute' : 'Mute'} active={isLocalAudioMuted} onClick={toggleLocalAudio}>
+                                        <Icon name={isLocalAudioMuted ? 'micOff' : 'mic'} />
+                                    </DockButton>
+                                    <DockButton label={isLocalCameraEnabled ? 'Camera off' : 'Camera on'} active={!isLocalCameraEnabled} onClick={toggleCamera}>
+                                        <Icon name={isLocalCameraEnabled ? 'cam' : 'camOff'} />
+                                    </DockButton>
+                                    <DockButton label="Privacy filters" pressed={openPanel === 'filters' || videoFilter !== 'none'} onClick={() => setOpenPanel(openPanel === 'filters' ? 'none' : 'filters')}>
+                                        <Icon name="sparkle" />
+                                    </DockButton>
+                                    <DockButton label="React" pressed={openPanel === 'react'} onClick={() => setOpenPanel(openPanel === 'react' ? 'none' : 'react')}>
+                                        <Icon name="smile" />
+                                    </DockButton>
+                                    <span className="hidden sm:contents">
+                                        <DockButton label="Swap views" onClick={() => setIsLocalMain(!isLocalMain)}>
+                                            <Icon name="swap" />
+                                        </DockButton>
+                                        <DockButton label="Volume" pressed={openPanel === 'volume'} onClick={() => setOpenPanel(openPanel === 'volume' ? 'none' : 'volume')}>
+                                            <Icon name="speaker" />
+                                        </DockButton>
+                                    </span>
+                                    <span className="mx-0.5 h-6 w-px bg-paper/15" aria-hidden="true" />
+                                    <button
+                                        onClick={disconnect}
+                                        title="End conversation"
+                                        aria-label="End conversation"
+                                        className="group h-11 w-11 grid place-items-center rounded-full bg-danger/90 text-ink-900 transition hover:bg-danger hover:shadow-[0_0_24px_rgba(229,115,95,0.45)] active:scale-95"
+                                    >
+                                        <Icon name="end" />
+                                    </button>
+                                    <button
+                                        onClick={skipStranger}
+                                        title="Skip to someone new"
+                                        className="h-11 rounded-full bg-paper pl-4 pr-3.5 text-sm font-medium text-ink-900 flex items-center gap-1.5 transition hover:bg-white hover:shadow-[0_0_28px_rgba(242,193,78,0.3)] active:scale-95"
+                                    >
+                                        Next <Icon name="next" />
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                </div>
 
                 {/* Chat */}
                 {isMatched && (
-                    <div className="bg-gray-800 rounded-lg p-4 mb-4">
-                        <h3 className="font-semibold mb-2">💬 Chat</h3>
-                        <div className="h-32 overflow-y-auto mb-3 space-y-2">
-                            {messages.map((msg) => (
-                                <div key={msg.id} className={`flex ${msg.sender === 'me' ? 'justify-end' : 'justify-start'}`}>
-                                    <div className={`px-3 py-1 rounded-lg text-sm ${msg.sender === 'me' ? 'bg-yellow-500 text-black' : 'bg-gray-700'
-                                        }`}>
-                                        {msg.text}
+                    <aside className="call-chat flex flex-col overflow-hidden rounded-3xl border border-paper/10 bg-gradient-to-b from-ink-850 to-ink-900 min-h-[360px]">
+                        <div className="flex items-end justify-between gap-3 px-5 pt-4 pb-3">
+                            <h2 className="font-serif text-2xl leading-none">Chat</h2>
+                            <p className={`flex items-center gap-1.5 whitespace-nowrap font-mono text-[10.5px] ${chatReady ? 'text-emerald-300/90' : 'text-paper-faint'}`}>
+                                <Icon name="lock" small />
+                                {chatReady ? 'end-to-end encrypted' : 'securing…'}
+                            </p>
+                        </div>
+                        <div
+                            className="mx-3 flex items-center justify-between gap-3 rounded-2xl border border-paper/10 bg-ink-950/50 px-3.5 py-2.5"
+                            title="Read this aloud together. If both codes match, nobody is listening in between."
+                        >
+                            <div className="min-w-0">
+                                <p className="font-mono text-[9.5px] uppercase tracking-[0.18em] text-paper-faint">Safety code</p>
+                                <p className="mt-0.5 text-[11.5px] leading-snug text-paper-mute">Read it aloud. Same code, private line.</p>
+                            </div>
+                            <p className="shrink-0 whitespace-nowrap font-mono text-[15px] tracking-[0.16em] text-glow-soft">{safetyCode ?? '··· ···'}</p>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto scrollbar-thin px-4 py-4 space-y-1.5 max-h-[300px] lg:max-h-none" aria-live="polite">
+                            {messages.length === 0 && (
+                                <div className="pt-4 text-center">
+                                    <p className="font-serif text-xl italic text-paper-dim">Break the ice</p>
+                                    <div className="mt-4 flex flex-wrap justify-center gap-2">
+                                        {['Hey! Where are you from?', 'What are you up to today?', 'Recommend me a song'].map((q) => (
+                                            <button
+                                                key={q}
+                                                onClick={() => sendMessage(q)}
+                                                disabled={!chatReady}
+                                                className="rounded-full border border-paper/15 px-3.5 py-1.5 text-[13px] text-paper-dim transition hover:border-glow/50 hover:text-paper hover:shadow-[0_0_18px_rgba(242,193,78,0.15)] disabled:opacity-40"
+                                            >
+                                                {q}
+                                            </button>
+                                        ))}
                                     </div>
                                 </div>
-                            ))}
+                            )}
+                            {messages.map((msg, i) => {
+                                if (msg.sender === 'system') {
+                                    return <p key={msg.id} className="text-center font-mono text-[11px] text-paper-faint py-1">{msg.text}</p>
+                                }
+                                const mine = msg.sender === 'me'
+                                const grouped = messages[i - 1]?.sender === msg.sender
+                                return (
+                                    <div key={msg.id} className={`flex animate-fade-in ${mine ? 'justify-end' : 'justify-start'} ${grouped ? '' : 'pt-2'}`}>
+                                        <div
+                                            className={`max-w-[82%] break-words px-4 py-2.5 text-[14.5px] leading-snug ${
+                                                mine
+                                                    ? 'rounded-[20px] rounded-br-md bg-paper text-ink-900 shadow-[0_6px_24px_-8px_rgba(236,233,226,0.35)]'
+                                                    : 'rounded-[20px] rounded-bl-md border border-paper/10 bg-ink-700/70 text-paper'
+                                            }`}
+                                        >
+                                            {msg.text}
+                                        </div>
+                                    </div>
+                                )
+                            })}
+                            {strangerTyping && (
+                                <div className="flex justify-start pt-2" aria-label="Stranger is typing">
+                                    <div className="flex items-center gap-1 rounded-[20px] rounded-bl-md border border-paper/10 bg-ink-700/70 px-4 py-3">
+                                        {[0, 0.15, 0.3].map((d) => (
+                                            <span key={d} className="h-1.5 w-1.5 rounded-full bg-paper-dim animate-bounce" style={{ animationDelay: `${d}s` }} />
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
                             <div ref={messagesEndRef} />
                         </div>
-                        <div className="flex gap-2">
-                            <input
-                                type="text"
-                                value={messageInput}
-                                onChange={(e) => setMessageInput(e.target.value)}
-                                onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
-                                placeholder="Type a message..."
-                                className="flex-1 px-3 py-2 rounded bg-gray-700 border-none outline-none"
-                            />
-                            <button onClick={sendMessage} className="px-4 py-2 bg-yellow-500 text-black rounded hover:bg-yellow-600 font-semibold transition-all">
-                                Send
-                            </button>
-                        </div>
-                    </div>
-                )}
 
-                {/* Homepage - Modern & Stylish */}
-                {!isMatched && !isSearching && (
-                    <div className="text-center py-12 sm:py-20">
-                        <div className={`inline-block p-6 rounded-3xl mb-8 ${isDarkMode ? 'bg-gray-800/50' : 'bg-white/50'} backdrop-blur-sm border ${isDarkMode ? 'border-gray-700' : 'border-gray-200'} shadow-2xl`}>
-                            {/* Logo on Homepage with Subtle Futuristic Effects */}
-                            <div className="mb-6 flex justify-center relative">
-                                <div className="absolute inset-0 rounded-3xl bg-gradient-to-r from-yellow-400/15 via-yellow-500/20 to-yellow-400/15 blur-xl animate-pulse-slow"></div>
-                                <img
-                                    src="/logo.png"
-                                    alt="Strangers Connect"
-                                    className="h-32 w-32 object-contain rounded-3xl relative z-10 transition-all duration-500 hover:scale-110 hover:rotate-6"
-                                    style={{
-                                        boxShadow: isDarkMode 
-                                            ? '0 0 20px rgba(234, 179, 8, 0.3), 0 0 40px rgba(234, 179, 8, 0.15)'
-                                            : '0 0 15px rgba(234, 179, 8, 0.25), 0 0 30px rgba(234, 179, 8, 0.1)'
-                                    }}
-                                    onError={(e) => {
-                                        // Hide logo if file not found - no fallback emoji
-                                        const target = e.target as HTMLImageElement
-                                        target.style.display = 'none'
-                                    }}
-                                />
-                            </div>
-                            <h2 className={`text-3xl sm:text-4xl font-bold mb-3 transition-all duration-300 ${isDarkMode ? 'text-white glow-yellow' : 'text-gray-900'}`}>
-                                Connect with Strangers
-                            </h2>
-                            <p className={`text-lg ${isDarkMode ? 'text-gray-400' : 'text-gray-600'} mb-8 max-w-md mx-auto`}>
-                                Meet new people from around the world. Video chat, text messages, and end-to-end encryption.
-                            </p>
-                            <button
-                                onClick={findStranger}
-                                disabled={!isConnected}
-                                className={`px-8 py-4 rounded-xl font-semibold text-lg transition-all duration-300 shadow-xl hover:shadow-2xl transform hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed futuristic-button relative overflow-hidden ${isConnected
-                                    ? isDarkMode
-                                        ? 'bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-400 hover:to-yellow-500 text-black shadow-yellow-500/50'
-                                        : 'bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-300 hover:to-yellow-400 text-black shadow-yellow-400/50'
-                                    : `${isDarkMode ? 'bg-gray-700 text-gray-500' : 'bg-gray-200 text-gray-400'}`
-                                    }`}
-                                style={isConnected ? {
-                                    boxShadow: isDarkMode
-                                        ? '0 0 20px rgba(234, 179, 8, 0.5), 0 0 40px rgba(234, 179, 8, 0.3), inset 0 0 20px rgba(234, 179, 8, 0.1)'
-                                        : '0 0 15px rgba(234, 179, 8, 0.4), 0 0 30px rgba(234, 179, 8, 0.2)'
-                                } : {}}
-                            >
-                                <span className="relative z-10">{isConnected ? '🎯 Find Stranger' : 'Connecting...'}</span>
-                            </button>
-                        </div>
-
-                        {/* Features Grid */}
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mt-12 max-w-4xl mx-auto">
-                            <div className={`p-6 rounded-2xl ${isDarkMode ? 'bg-gray-800/50 border border-gray-700' : 'bg-white/50 border border-gray-200'} backdrop-blur-sm transition-all duration-300 hover:scale-105 hover:border-yellow-500/50`}>
-                                <div className="text-4xl mb-3 transition-transform duration-300 hover:scale-110">🔒</div>
-                                <h3 className={`font-semibold mb-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>End-to-End Encrypted</h3>
-                                <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>Your messages are private</p>
-                            </div>
-                            <div className={`p-6 rounded-2xl ${isDarkMode ? 'bg-gray-800/50 border border-gray-700' : 'bg-white/50 border border-gray-200'} backdrop-blur-sm transition-all duration-300 hover:scale-105 hover:border-yellow-500/50`}>
-                                <div className="text-4xl mb-3 transition-transform duration-300 hover:scale-110">🎥</div>
-                                <h3 className={`font-semibold mb-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>HD Video Chat</h3>
-                                <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>Crystal clear video calls</p>
-                            </div>
-                            <div className={`p-6 rounded-2xl ${isDarkMode ? 'bg-gray-800/50 border border-gray-700' : 'bg-white/50 border border-gray-200'} backdrop-blur-sm transition-all duration-300 hover:scale-105 hover:border-yellow-500/50`}>
-                                <div className="text-4xl mb-3 transition-transform duration-300 hover:scale-110">🌍</div>
-                                <h3 className={`font-semibold mb-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Global Reach</h3>
-                                <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>Connect worldwide</p>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {/* Controls */}
-                <div className="flex flex-col items-center gap-4">
-                    {isSearching && (
-                        <div className={`flex items-center gap-3 px-8 py-4 rounded-xl font-semibold ${isDarkMode ? 'bg-gray-800/80 border border-gray-700' : 'bg-white/80 border border-yellow-200'} backdrop-blur-sm shadow-lg`}>
-                            <div className={`w-5 h-5 border-2 ${isDarkMode ? 'border-yellow-500' : 'border-yellow-400'} border-t-transparent rounded-full animate-spin`}></div>
-                            <span className={isDarkMode ? 'text-gray-200' : 'text-gray-800'}>Searching for stranger...</span>
-                        </div>
-                    )}
-
-                    {isMatched && (
-                        <>
-                            {/* Audio & Camera Controls */}
-                            <div className={`flex flex-col sm:flex-row items-center gap-4 px-6 py-4 rounded-xl ${isDarkMode ? 'bg-gray-800/80 border border-gray-700' : 'bg-white/80 border border-gray-200'} backdrop-blur-sm shadow-lg`}>
-                                {/* Camera Toggle */}
-                                <div className="flex items-center gap-3">
-                                    <button
-                                        onClick={toggleCamera}
-                                        className={`p-3 rounded-lg transition-all duration-200 hover:scale-110 active:scale-95 ${isLocalCameraEnabled
-                                            ? isDarkMode ? 'bg-blue-600/80 hover:bg-blue-500 text-white' : 'bg-blue-500/80 hover:bg-blue-400 text-white'
-                                            : isDarkMode ? 'bg-gray-600/80 hover:bg-gray-500 text-white' : 'bg-gray-400/80 hover:bg-gray-300 text-white'
-                                            }`}
-                                        title={isLocalCameraEnabled ? 'Turn off camera' : 'Turn on camera'}
-                                    >
-                                        {isLocalCameraEnabled ? '📹' : '📷'}
-                                    </button>
-                                </div>
-
-                                {/* Local Audio Controls */}
-                                <div className="flex items-center gap-3">
-                                    <button
-                                        onClick={toggleLocalAudio}
-                                        className={`p-3 rounded-lg transition-all duration-200 hover:scale-110 active:scale-95 ${isLocalAudioMuted
-                                            ? isDarkMode ? 'bg-red-600/80 hover:bg-red-500 text-white' : 'bg-red-500/80 hover:bg-red-400 text-white'
-                                            : isDarkMode ? 'bg-green-600/80 hover:bg-green-500 text-white' : 'bg-green-500/80 hover:bg-green-400 text-white'
-                                            }`}
-                                        title={isLocalAudioMuted ? 'Unmute microphone' : 'Mute microphone'}
-                                    >
-                                        {isLocalAudioMuted ? '🔇' : '🎤'}
-                                    </button>
-                                    <div className="flex items-center gap-2 min-w-[120px]">
-                                        <span className={`text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>Mic:</span>
-                                        <input
-                                            type="range"
-                                            min="0"
-                                            max="100"
-                                            value={localAudioVolume}
-                                            onChange={(e) => handleLocalVolumeChange(Number(e.target.value))}
-                                            className="flex-1 h-2 rounded-lg appearance-none cursor-pointer"
-                                            style={{
-                                                background: isDarkMode
-                                                    ? `linear-gradient(to right, #10b981 0%, #10b981 ${localAudioVolume}%, #374151 ${localAudioVolume}%, #374151 100%)`
-                                                    : `linear-gradient(to right, #059669 0%, #059669 ${localAudioVolume}%, #d1d5db ${localAudioVolume}%, #d1d5db 100%)`
-                                            }}
-                                        />
-                                        <span className={`text-xs w-10 text-right ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>{localAudioVolume}%</span>
-                                    </div>
-                                </div>
-
-                                {/* Remote Audio Controls */}
-                                <div className="flex items-center gap-3">
-                                    <div className={`p-3 rounded-lg ${isDarkMode ? 'bg-gray-700/50 text-gray-400' : 'bg-gray-200/50 text-gray-500'}`} title="Remote audio (you can only adjust volume)">
-                                        🔊
-                                    </div>
-                                    <div className="flex items-center gap-2 min-w-[120px]">
-                                        <span className={`text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>Speaker:</span>
-                                        <input
-                                            type="range"
-                                            min="0"
-                                            max="100"
-                                            value={remoteAudioVolume}
-                                            onChange={(e) => handleRemoteVolumeChange(Number(e.target.value))}
-                                            className="flex-1 h-2 rounded-lg appearance-none cursor-pointer"
-                                            style={{
-                                                background: isDarkMode
-                                                    ? `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${remoteAudioVolume}%, #374151 ${remoteAudioVolume}%, #374151 100%)`
-                                                    : `linear-gradient(to right, #2563eb 0%, #2563eb ${remoteAudioVolume}%, #d1d5db ${remoteAudioVolume}%, #d1d5db 100%)`
-                                            }}
-                                        />
-                                        <span className={`text-xs w-10 text-right ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>{remoteAudioVolume}%</span>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Call Control Buttons */}
-                            <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
-                                {/* Next Stranger Button (Skip) */}
-                                <button
-                                    onClick={skipStranger}
-                                    className={`px-6 py-3 rounded-xl font-semibold transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-105 active:scale-95 flex items-center justify-center gap-2 ${isDarkMode
-                                        ? 'bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 text-white'
-                                        : 'bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-400 hover:to-blue-500 text-white'
-                                        }`}
-                                >
-                                    <span>⏭️</span>
-                                    <span>Next Stranger</span>
-                                </button>
-
-                                {/* End Call Button */}
-                                <button
-                                    onClick={disconnect}
-                                    className={`px-6 py-3 rounded-xl font-semibold transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-105 active:scale-95 flex items-center justify-center gap-2 ${isDarkMode
-                                        ? 'bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white'
-                                        : 'bg-gradient-to-r from-red-500 to-red-600 hover:from-red-400 hover:to-red-500 text-white'
-                                        }`}
-                                >
-                                    <span>📞</span>
-                                    <span>End Call</span>
-                                </button>
-                            </div>
-                        </>
-                    )}
-                </div>
-
-                {/* Report Modal */}
-                {showReportModal && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-                        <div className={`max-w-md w-full rounded-2xl shadow-2xl ${isDarkMode ? 'bg-gray-800 border border-gray-700' : 'bg-white border border-gray-200'}`}>
-                            <div className="p-6">
-                                <div className="flex items-center gap-3 mb-4">
-                                    <div className={`p-3 rounded-full ${isDarkMode ? 'bg-red-600/20' : 'bg-red-100'}`}>
-                                        <svg className={`w-6 h-6 ${isDarkMode ? 'text-red-400' : 'text-red-600'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                                        </svg>
-                                    </div>
-                                    <h3 className={`text-xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                                        Report User
-                                    </h3>
-                                </div>
-                                <p className={`mb-6 ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                    Are you sure you want to report this user for inappropriate content? This action will disconnect you from the current call.
-                                </p>
-                                <div className="flex gap-3">
-                                    <button
-                                        onClick={cancelReport}
-                                        className={`flex-1 px-4 py-2.5 rounded-xl font-semibold transition-all duration-200 ${isDarkMode
-                                            ? 'bg-gray-700 hover:bg-gray-600 text-white'
-                                            : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
-                                            }`}
-                                    >
-                                        Cancel
-                                    </button>
-                                    <button
-                                        onClick={confirmReport}
-                                        className={`flex-1 px-4 py-2.5 rounded-xl font-semibold transition-all duration-200 ${isDarkMode
-                                            ? 'bg-red-600 hover:bg-red-500 text-white'
-                                            : 'bg-red-500 hover:bg-red-400 text-white'
-                                            }`}
-                                    >
-                                        Report
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {/* Footer */}
-                <div className={`mt-12 text-center ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>
-                    <p className="text-sm">
-                        © 2024 Vamsi Krishna •{' '}
-                        <a
-                            href="https://github.com/vamsikrishnakosuri/StrangersConnect"
-                            className={`hover:underline transition-all ${isDarkMode ? 'text-yellow-400 hover:text-yellow-300' : 'text-yellow-600 hover:text-yellow-700'}`}
+                        <form
+                            className="p-3"
+                            onSubmit={(e) => {
+                                e.preventDefault()
+                                sendMessage()
+                            }}
                         >
-                            Open Source
-                        </a>
-                    </p>
-                </div>
+                            {showEmojiPicker && (
+                                <div className="mb-2 grid grid-cols-8 gap-1 rounded-2xl border border-paper/10 bg-ink-950/80 p-2 animate-fade-in">
+                                    {CHAT_EMOJIS.map((e) => (
+                                        <button
+                                            key={e}
+                                            type="button"
+                                            onClick={() => setMessageInput((v) => (v + e).slice(0, 2000))}
+                                            className="h-9 grid place-items-center rounded-xl text-xl transition hover:bg-paper/10"
+                                            aria-label={`Insert ${e}`}
+                                        >
+                                            {e}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                            <div className="flex items-center gap-2 rounded-full border border-paper/10 bg-ink-950/70 p-1.5 pl-2 transition focus-within:border-paper/30 focus-within:shadow-[0_0_0_4px_rgba(236,233,226,0.04)]">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                                    className={`h-9 w-9 shrink-0 grid place-items-center rounded-full transition ${showEmojiPicker ? 'bg-paper/15 text-paper' : 'text-paper-mute hover:text-paper hover:bg-paper/10'}`}
+                                    aria-label="Emoji"
+                                    aria-expanded={showEmojiPicker}
+                                >
+                                    <Icon name="smile" />
+                                </button>
+                                <input
+                                    type="text"
+                                    value={messageInput}
+                                    onChange={(e) => onType(e.target.value)}
+                                    placeholder={chatReady ? 'Say something nice' : 'Securing chat…'}
+                                    disabled={!chatReady}
+                                    maxLength={2000}
+                                    autoComplete="off"
+                                    aria-label="Message"
+                                    className="flex-1 min-w-0 bg-transparent py-1.5 text-[14.5px] placeholder:text-paper-faint outline-none disabled:opacity-60"
+                                />
+                                <button type="submit" disabled={!chatReady || !messageInput.trim()} className="btn-primary h-9 w-9 shrink-0 justify-center p-0" aria-label="Send">
+                                    <Icon name="send" />
+                                </button>
+                            </div>
+                        </form>
+                    </aside>
+                )}
             </div>
+
+            {/* Searching */}
+            {isSearching && (
+                <section className="relative z-10 mx-auto max-w-page px-4 sm:px-6 py-16 sm:py-24 flex flex-col items-center text-center rise" aria-live="polite">
+                    <Orbit />
+                    <p className="mt-6 font-mono text-[11px] uppercase tracking-[0.22em] text-paper-mute">Matching</p>
+                    <h2 className="mt-3 font-serif text-4xl sm:text-5xl">
+                        Finding <em className="text-glow-soft">someone new…</em>
+                    </h2>
+                    <p className="mt-4 max-w-sm text-paper-mute">This usually takes a few seconds. Keep this tab open.</p>
+                    {lastPeer && (
+                        <div className="mt-8">
+                            <RematchQuestion answer={rematchAnswer} onAnswer={answerRematch} />
+                        </div>
+                    )}
+                    <button onClick={cancelSearch} className="btn-ghost mt-8 px-5 py-2.5 text-sm text-paper-mute">
+                        Cancel
+                    </button>
+                </section>
+            )}
+
+            {/* After a call */}
+            {idle && callEnded && (
+                <section className="relative z-10 mx-auto max-w-page px-4 sm:px-6 py-16 sm:py-24 text-center rise">
+                    <CupsLine />
+                    <p className="mt-6 font-mono text-[11px] uppercase tracking-[0.22em] text-paper-mute">Conversation ended</p>
+                    <h2 className="mt-4 font-serif text-4xl sm:text-6xl leading-[1.02]">
+                        Ready for <em className="text-glow-soft">the next one?</em>
+                    </h2>
+                    <p className="mt-4 text-paper-mute">{callEnded}</p>
+                    {lastPeer && (
+                        <div className="mt-8">
+                            <RematchQuestion answer={rematchAnswer} onAnswer={answerRematch} />
+                        </div>
+                    )}
+                    <div className="mt-9 flex flex-col sm:flex-row items-center justify-center gap-3">
+                        <button onClick={requestStart} disabled={!isConnected} className="btn-primary px-7 py-3.5 text-[15px]">
+                            Meet someone new
+                        </button>
+                        <button onClick={() => setCallEnded(null)} className="btn-ghost px-6 py-3.5 text-[15px]">
+                            Back to home
+                        </button>
+                    </div>
+                </section>
+            )}
+
+            {/* Marketing landing */}
+            {idle && !callEnded && <Landing onStart={requestStart} isConnected={isConnected} />}
+
+            {/* Toast */}
+            {notice && (
+                <div role="status" className="fixed bottom-5 left-1/2 z-50 -translate-x-1/2 rounded-full border border-paper/15 bg-ink-800/95 backdrop-blur px-5 py-3 text-sm text-paper shadow-2xl animate-fade-in">
+                    {notice}
+                </div>
+            )}
+
+            {/* 18+ and rules */}
+            {showAgeGate && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="age-title">
+                    <div className="max-w-md w-full max-h-[90vh] overflow-y-auto rounded-3xl border border-paper/10 bg-ink-850 p-7 shadow-2xl animate-fade-in">
+                        <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-glow-soft">Adults only</p>
+                        <h3 id="age-title" className="mt-3 font-serif text-3xl leading-tight">Before you meet <em>someone new</em></h3>
+                        <ul className="mt-5 space-y-3 text-[14.5px] leading-relaxed text-paper-mute">
+                            {[
+                                ['You are 18 or older.', 'Strangers Connect is only for adults.'],
+                                ['You meet real, unknown people.', 'We cannot see or control what others say or show, and we are not responsible for their behavior.'],
+                                ['Keep yourself safe.', 'Do not share your full name, address, passwords or anything you would not tell a stranger on the street.'],
+                                ['Be decent.', 'No nudity, harassment, hate or anything illegal. Press Report and you are disconnected instantly.'],
+                                ['Nothing is recorded by us,', 'but the other person could record their own screen. Act accordingly.'],
+                            ].map(([t, d]) => (
+                                <li key={t} className="flex gap-3">
+                                    <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-glow" />
+                                    <span><span className="text-paper">{t}</span> {d}</span>
+                                </li>
+                            ))}
+                        </ul>
+                        <div className="mt-7 flex flex-col-reverse sm:flex-row gap-3">
+                            <button onClick={() => setShowAgeGate(false)} className="btn-ghost flex-1 justify-center py-3 text-sm">
+                                I am under 18
+                            </button>
+                            <button onClick={acceptRules} disabled={!isConnected} className="btn-primary flex-1 justify-center py-3 text-sm">
+                                I am 18+ and agree
+                            </button>
+                        </div>
+                        <p className="mt-4 text-center text-xs text-paper-faint">You use Strangers Connect at your own risk.</p>
+                    </div>
+                </div>
+            )}
+
+            {/* Report modal */}
+            {showReportModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="report-title">
+                    <div className="max-w-md w-full rounded-3xl border border-paper/10 bg-ink-850 p-7 shadow-2xl animate-fade-in">
+                        <div className="text-danger"><Icon name="flag" /></div>
+                        <h3 id="report-title" className="mt-4 font-serif text-3xl">Report this person?</h3>
+                        <p className="mt-3 text-[15px] leading-relaxed text-paper-mute">
+                            You will be disconnected right away. People who get reported by several different users are banned automatically.
+                        </p>
+                        <div className="mt-7 flex gap-3">
+                            <button onClick={cancelReport} className="btn-ghost flex-1 justify-center py-3 text-sm">Cancel</button>
+                            <button onClick={confirmReport} className="flex-1 rounded-full bg-danger py-3 text-sm font-medium text-ink-900 hover:brightness-110 transition">Report and leave</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Footer */}
+            <footer className="relative z-10 border-t border-paper/10">
+                <div className="mx-auto max-w-page px-4 sm:px-6 py-10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-sm text-paper-faint">
+                    <p>
+                        <span className="font-serif text-lg text-paper-dim">Strangers Connect</span>
+                        <span className="ml-3">Free, private, for adults 18+.</span>
+                    </p>
+                    <button onClick={() => setShowAgeGate(true)} className="hover:text-paper transition-colors">
+                        Rules and safety
+                    </button>
+                </div>
+            </footer>
         </div>
+    )
+}
+
+function DockButton({ label, active, pressed, onClick, children }: { label: string; active?: boolean; pressed?: boolean; onClick: () => void; children: React.ReactNode }) {
+    return (
+        <button
+            onClick={onClick}
+            title={label}
+            aria-label={label}
+            aria-pressed={pressed ?? active}
+            className={`h-11 w-11 grid place-items-center rounded-full transition active:scale-95 ${
+                active ? 'bg-paper text-ink-900' : pressed ? 'bg-paper/15 text-paper' : 'text-paper hover:bg-paper/10'
+            }`}
+        >
+            {children}
+        </button>
+    )
+}
+
+// Two people circling until they find each other
+function Orbit() {
+    return (
+        <svg viewBox="0 0 200 200" className="h-44 w-44 sm:h-52 sm:w-52" aria-hidden="true">
+            <defs>
+                <filter id="orbit-glow" x="-100%" y="-100%" width="300%" height="300%">
+                    <feGaussianBlur stdDeviation="3" />
+                </filter>
+            </defs>
+            <circle cx="100" cy="100" r="70" fill="none" stroke="#ece9e2" strokeOpacity="0.08" />
+            <circle cx="100" cy="100" r="46" fill="none" stroke="#ece9e2" strokeOpacity="0.12" strokeDasharray="2 6" className="spin-slow" />
+            <g className="orbit-a">
+                <circle cx="100" cy="30" r="5" fill="#ece9e2" />
+            </g>
+            <g className="orbit-b">
+                <circle cx="100" cy="170" r="5" fill="#ece9e2" />
+            </g>
+            <circle cx="100" cy="100" r="9" fill="#f2c14e" opacity="0.5" filter="url(#orbit-glow)" className="breathe" />
+            <circle cx="100" cy="100" r="3.5" fill="#f6d488" />
+        </svg>
+    )
+}
+
+// The logo's paper-cup telephone, drawn in and gently swaying
+function CupsLine() {
+    return (
+        <svg viewBox="0 0 32 32" className="mx-auto h-24 w-24 sway" aria-hidden="true">
+            <defs>
+                <filter id="cups-glow" x="-100%" y="-100%" width="300%" height="300%">
+                    <feGaussianBlur stdDeviation="1.4" />
+                </filter>
+            </defs>
+            <g fill="none" stroke="#ece9e2" strokeWidth="0.9" strokeLinecap="round" strokeLinejoin="round">
+                <path className="draw" style={{ ['--len' as string]: 60 }} d="M14.2 8 H10.8 C 7.4 8, 6.6 12, 9 13.6 L 23 18.4 C 25.4 20, 24.6 24, 21.2 24 H17.8" />
+                <path d="M14.2 6 L23.2 4.3 M14.2 10 L23.2 11.7" />
+                <ellipse cx="23.2" cy="8" rx="1.3" ry="3.7" fill="#0e0e10" />
+                <ellipse cx="14.2" cy="8" rx="0.6" ry="2" />
+                <path d="M17.8 22 L8.8 20.3 M17.8 26 L8.8 27.7" />
+                <ellipse cx="8.8" cy="24" rx="1.3" ry="3.7" fill="#0e0e10" />
+                <ellipse cx="17.8" cy="24" rx="0.6" ry="2" />
+            </g>
+            <circle cx="16" cy="16" r="2" fill="#f2c14e" filter="url(#cups-glow)" className="breathe" />
+            <circle cx="16" cy="16" r="0.9" fill="#f6d488" />
+        </svg>
+    )
+}
+
+function RematchQuestion({ answer, onAnswer }: { answer: 'yes' | 'no' | null; onAnswer: (a: 'yes' | 'no') => void }) {
+    if (answer) {
+        return (
+            <p className="font-mono text-[11px] text-paper-faint animate-fade-in">
+                {answer === 'no' ? 'Got it. You will not be matched with them again.' : 'Noted. You might meet again someday.'}
+            </p>
+        )
+    }
+    return (
+        <div className="inline-flex flex-col sm:flex-row items-center gap-3 rounded-3xl sm:rounded-full border border-paper/10 bg-ink-850/80 px-5 py-4 sm:py-2 sm:pl-5 sm:pr-2 animate-fade-in">
+            <span className="text-sm text-paper-dim">Okay to meet this person again someday?</span>
+            <span className="flex gap-1.5">
+                <button onClick={() => onAnswer('yes')} className="rounded-full border border-paper/15 px-4 py-1.5 text-sm hover:border-paper/40 hover:bg-paper/5">Sure</button>
+                <button onClick={() => onAnswer('no')} className="rounded-full border border-paper/15 px-4 py-1.5 text-sm hover:border-paper/40 hover:bg-paper/5">No, never</button>
+            </span>
+        </div>
+    )
+}
+
+function Icon({ name, small }: { name: 'mic' | 'micOff' | 'cam' | 'camOff' | 'speaker' | 'next' | 'end' | 'flag' | 'lock' | 'send' | 'swap' | 'smile' | 'sparkle'; small?: boolean }) {
+    const p: Record<typeof name, React.ReactElement> = {
+        mic: <><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3" /></>,
+        micOff: <><path d="M15 9.3V6a3 3 0 0 0-5.7-1.3M9 9v2a3 3 0 0 0 5 2.2M5 11a7 7 0 0 0 11.5 5.3M19 11a7 7 0 0 1-.4 2.3M12 18v3M3 3l18 18" /></>,
+        cam: <><rect x="3" y="6" width="13" height="12" rx="2.5" /><path d="M16 10.5 21 7v10l-5-3.5" /></>,
+        camOff: <><path d="M16 16v.5a2.5 2.5 0 0 1-2.5 2.5h-8A2.5 2.5 0 0 1 3 16.5v-8A2.5 2.5 0 0 1 5 6M9.5 6h4A2.5 2.5 0 0 1 16 8.5v3l5-3.5v10M3 3l18 18" /></>,
+        speaker: <><path d="M4 9v6h4l5 4V5L8 9H4Z" /><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12" /></>,
+        next: <><path d="M6 6l8 6-8 6V6ZM18 6v12" /></>,
+        end: <><path d="M3 15.5c5-4.7 13-4.7 18 0l-2.2 2.3-3.3-1.6v-2.6a12 12 0 0 0-7 0v2.6l-3.3 1.6L3 15.5Z" /></>,
+        flag: <><path d="M5 21V4M5 4.5c4-2.5 7 2.5 13 0v9c-6 2.5-9-2.5-13 0" /></>,
+        lock: <><rect x="5" y="11" width="14" height="10" rx="2" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></>,
+        send: <><path d="M5 12h13M13 6l6 6-6 6" /></>,
+        swap: <><path d="M7 7h11l-3-3M17 17H6l3 3" /></>,
+        smile: <><circle cx="12" cy="12" r="8.5" /><path d="M8.5 14c1.8 2 5.2 2 7 0M9.3 9.8h.01M14.7 9.8h.01" /></>,
+        sparkle: <><path d="M12 3.5l1.8 5.2 5.2 1.8-5.2 1.8L12 17.5l-1.8-5.2-5.2-1.8 5.2-1.8L12 3.5Z" /><path d="M18.5 16.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7.7-1.8Z" /></>,
+    }
+    return (
+        <svg viewBox="0 0 24 24" className={small ? 'h-3.5 w-3.5' : 'h-[18px] w-[18px]'} fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            {p[name]}
+        </svg>
     )
 }
