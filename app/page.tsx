@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import type React from 'react'
 import { Signal, deviceId } from '@/lib/signal'
+import { checkMessage, splitLinks, type SafetyReport } from '@/lib/chatSafety'
 import { v4 as uuidv4 } from 'uuid'
 import Landing from '@/components/Landing'
 import { SearchRings } from '@/components/Illustrations'
@@ -62,6 +63,7 @@ interface Message {
     id: string
     text: string
     sender: 'me' | 'stranger' | 'system'
+    safety?: SafetyReport
 }
 
 export default function Home() {
@@ -111,6 +113,10 @@ export default function Home() {
     const [rematchAnswer, setRematchAnswer] = useState<'yes' | 'no' | null>(null)
     const [strangerTyping, setStrangerTyping] = useState(false)
     const [showSafety, setShowSafety] = useState(false)
+    // A message held back because it looks like personal info, waiting for "send anyway"
+    const [pendingSend, setPendingSend] = useState<{ text: string; kinds: string[] } | null>(null)
+    const [revealed, setRevealed] = useState<Set<string>>(new Set())
+    const [awayPaused, setAwayPaused] = useState(false)
     // Relay servers handed out by the signaling server on each match
     const iceServersRef = useRef<RTCIceServer[]>([])
     // Shown when video cannot get through between the two networks
@@ -1697,7 +1703,7 @@ export default function Home() {
                     if (payload.e && REACTIONS.includes(payload.e)) spawnFloater(payload.e, false)
                 } else if (typeof payload.t === 'string' && payload.t.trim()) {
                     const text = payload.t.slice(0, 2000)
-                    setMessages((prev) => [...prev, { id: uuidv4(), text, sender: 'stranger' }])
+                    setMessages((prev) => [...prev, { id: uuidv4(), text, sender: 'stranger', safety: checkMessage(text) }])
                 }
             } catch {
                 setMessages((prev) => [...prev, { id: uuidv4(), text: 'A message failed verification and was hidden.', sender: 'system' }])
@@ -1857,6 +1863,41 @@ export default function Home() {
         }
     }, [isMatched])
 
+    // Your camera pauses while you are in another tab or app, so nobody sees you unawares
+    useEffect(() => {
+        if (!isMatched) return
+        const onVisibility = () => {
+            const tracks = [...(localStreamRef.current?.getVideoTracks() ?? []), ...(filterPipeRef.current ? [filterPipeRef.current.track] : [])]
+            if (document.hidden) {
+                tracks.forEach((t) => (t.enabled = false))
+                setAwayPaused(true)
+            } else {
+                tracks.forEach((t) => (t.enabled = isLocalCameraEnabled))
+                setAwayPaused((was) => {
+                    if (was) setNotice('Your camera was paused while you were away.')
+                    return false
+                })
+            }
+        }
+        document.addEventListener('visibilitychange', onVisibility)
+        return () => document.removeEventListener('visibilitychange', onVisibility)
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isMatched, isLocalCameraEnabled])
+
+    // Quick exit: Esc leaves the conversation right away
+    useEffect(() => {
+        if (!isMatched) return
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key !== 'Escape' || showReportModal || showAgeGate) return
+            const tag = (e.target as HTMLElement | null)?.tagName
+            if (tag === 'INPUT' || tag === 'TEXTAREA') return
+            disconnect()
+        }
+        window.addEventListener('keydown', onKey)
+        return () => window.removeEventListener('keydown', onKey)
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isMatched, showReportModal, showAgeGate, strangerId])
+
     const toggleSafeStart = (on: boolean) => {
         setSafeStart(on)
         safeStartRef.current = on
@@ -1892,10 +1933,17 @@ export default function Home() {
         }
     }
 
-    const sendMessage = async (preset?: string) => {
+    const sendMessage = async (preset?: string, confirmed = false) => {
         const messageText = (preset ?? messageInput).trim()
         // Never send plaintext: wait until the key exchange has finished
         if (!messageText || !socket || !strangerId || !encryptionKeyRef.current) return
+        // Pause before sharing personal details with a stranger
+        const report = checkMessage(messageText)
+        if (!confirmed && report.personal.length) {
+            setPendingSend({ text: messageText, kinds: report.personal })
+            return
+        }
+        setPendingSend(null)
         try {
             await sendPayload({ k: 'msg', t: messageText })
             setMessages((prev) => [...prev, { id: uuidv4(), text: messageText, sender: 'me' }])
@@ -2525,7 +2573,7 @@ export default function Home() {
                                     <span className="mx-0.5 h-6 w-px bg-paper/15" aria-hidden="true" />
                                     <button
                                         onClick={disconnect}
-                                        title="End conversation"
+                                        title="End conversation (Esc)"
                                         aria-label="End conversation"
                                         className="group h-11 w-11 grid place-items-center rounded-full bg-danger/90 text-ink-900 transition hover:bg-danger hover:shadow-[0_0_24px_rgba(229,115,95,0.45)] active:scale-95"
                                     >
@@ -2607,17 +2655,45 @@ export default function Home() {
                                 }
                                 const mine = msg.sender === 'me'
                                 const grouped = messages[i - 1]?.sender === msg.sender
+                                const safety = msg.safety
+                                const hideIt = !mine && safety?.offensive && !revealed.has(msg.id)
                                 return (
-                                    <div key={msg.id} className={`flex animate-fade-in ${mine ? 'justify-end' : 'justify-start'} ${grouped ? '' : 'pt-2'}`}>
-                                        <div
-                                            className={`max-w-[82%] break-words px-4 py-2.5 text-[14.5px] leading-snug ${
-                                                mine
-                                                    ? 'rounded-[20px] rounded-br-md bg-paper text-ink-900 shadow-[0_6px_24px_-8px_rgba(236,233,226,0.35)]'
-                                                    : 'rounded-[20px] rounded-bl-md border border-paper/10 bg-ink-700/70 text-paper'
-                                            }`}
-                                        >
-                                            {msg.text}
-                                        </div>
+                                    <div key={msg.id} className={`flex flex-col animate-fade-in ${mine ? 'items-end' : 'items-start'} ${grouped ? '' : 'pt-2'}`}>
+                                        {hideIt ? (
+                                            <button
+                                                onClick={() => setRevealed((prev) => new Set(prev).add(msg.id))}
+                                                className="max-w-[82%] rounded-[20px] rounded-bl-md border border-dashed border-paper/20 px-4 py-2.5 text-left text-[13px] text-paper-mute hover:border-paper/40"
+                                            >
+                                                Hidden: may contain offensive language. <span className="text-paper underline underline-offset-2">Show</span>
+                                            </button>
+                                        ) : (
+                                            <div
+                                                className={`max-w-[82%] break-words px-4 py-2.5 text-[14.5px] leading-snug ${
+                                                    mine
+                                                        ? 'rounded-[20px] rounded-br-md bg-paper text-ink-900 shadow-[0_6px_24px_-8px_rgba(236,233,226,0.35)]'
+                                                        : 'rounded-[20px] rounded-bl-md border border-paper/10 bg-ink-700/70 text-paper'
+                                                }`}
+                                            >
+                                                {/* Links are shown as plain text and are never clickable */}
+                                                {splitLinks(msg.text).map((part, k) =>
+                                                    part.link ? (
+                                                        <span key={k} className={`break-all font-mono text-[13px] ${mine ? 'text-ink-900/70' : 'text-glow-soft/80'}`} title="Links are not clickable">
+                                                            {part.text}
+                                                        </span>
+                                                    ) : (
+                                                        <span key={k}>{part.text}</span>
+                                                    ),
+                                                )}
+                                            </div>
+                                        )}
+                                        {!mine && (safety?.links || safety?.risky) && (
+                                            <p className="mt-1 flex max-w-[82%] items-start gap-1.5 px-1 text-[11px] leading-snug text-amber-200/80">
+                                                <span aria-hidden="true">⚠</span>
+                                                {safety?.links
+                                                    ? 'Links are not clickable here. Never open links from people you just met.'
+                                                    : 'Careful: asking for money or moving you to another app is how most scams start.'}
+                                            </p>
+                                        )}
                                     </div>
                                 )
                             })}
@@ -2640,6 +2716,17 @@ export default function Home() {
                                 sendMessage()
                             }}
                         >
+                            {pendingSend && (
+                                <div className="mb-2 rounded-2xl border border-amber-200/25 bg-amber-200/5 p-3 animate-fade-in">
+                                    <p className="text-[12.5px] leading-snug text-paper-dim">
+                                        This looks like your {pendingSend.kinds.join(' and ')}. Strangers can screenshot chats, so only share it if you trust them.
+                                    </p>
+                                    <div className="mt-2 flex gap-2">
+                                        <button type="button" onClick={() => setPendingSend(null)} className="btn-ghost px-3 py-1.5 text-xs">Edit</button>
+                                        <button type="button" onClick={() => sendMessage(pendingSend.text, true)} className="rounded-full bg-paper/10 px-3 py-1.5 text-xs text-paper hover:bg-paper/20">Send anyway</button>
+                                    </div>
+                                </div>
+                            )}
                             {showEmojiPicker && (
                                 <div className="mb-2 grid grid-cols-8 gap-1 rounded-2xl border border-paper/10 bg-ink-950/80 p-2 animate-fade-in">
                                     {CHAT_EMOJIS.map((e) => (

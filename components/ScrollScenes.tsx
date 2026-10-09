@@ -40,17 +40,12 @@ export default function ScrollScenes() {
                     // 1. Text drifts away while the scene zooms toward you
                     tl.to('[data-anim="hero-text"]', { y: -90, opacity: 0, duration: 0.35 }, 0)
                         .to('[data-anim="ribbons"]', { opacity: 0, scale: 1.1, duration: 0.35 }, 0)
-                        .to('[data-anim="hero-art"]', { scale: 1.32, y: -120, force3D: false, duration: 1 }, 0)
+                        .to('[data-anim="hero-art"]', { scale: 1.55, y: -60, force3D: false, duration: 1 }, 0)
                         // 2. Blue and pink light sweeps in from each side
                         .to('[data-anim="blob-a"]', { xPercent: 22, scale: 1.5, opacity: 1, duration: 0.8 }, 0.1)
                         .to('[data-anim="blob-b"]', { xPercent: -22, scale: 1.5, opacity: 1, duration: 0.8 }, 0.1)
-                        // 3. "hey!" then "hi!" lean in, each frame lights up in its colour
-                        .to('[data-anim="frame-a"]', { opacity: 1, duration: 0.2 }, 0.3)
-                        .fromTo('[data-anim="bubble-a"]', { scale: 1, rotation: 0 }, { scale: 1.3, rotation: -6, duration: 0.2, ease: 'back.out(2)' }, 0.3)
-                        .to('[data-anim="frame-b"]', { opacity: 1, duration: 0.2 }, 0.5)
-                        .fromTo('[data-anim="bubble-b"]', { scale: 1, rotation: 0 }, { scale: 1.3, rotation: 6, duration: 0.2, ease: 'back.out(2)' }, 0.5)
-                        // 4. The connection between them flares
-                        .to('[data-anim="link"]', { attr: { 'stroke-width': 4 }, strokeOpacity: 1, duration: 0.3 }, 0.65)
+                        // 3. The globe draws close and slightly brighter
+                        .to('[data-anim="hero-art"]', { filter: 'brightness(1.15)', duration: 0.4 }, 0.5)
                 })
                 mm.add('(max-width: 767px)', () => {
                     gsap.to('[data-anim="hero-art"]', {

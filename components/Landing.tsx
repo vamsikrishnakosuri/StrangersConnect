@@ -2,7 +2,7 @@
 
 import { FAQ } from '@/lib/site'
 import { LineIcon, PrivacyDiagram } from './Illustrations'
-import { HeroArt } from './HeroArt'
+import { GlobeHero } from './GlobeHero'
 import ScrollScenes from './ScrollScenes'
 
 type Props = {
@@ -87,7 +87,7 @@ export default function Landing({ onStart, isConnected }: Props) {
                     </div>
                     <div className="rise mx-auto mt-10 sm:mt-6 max-w-[620px]" style={{ ['--delay' as string]: '0.2s' }}>
                         <div data-anim="hero-art" className="origin-center">
-                            <HeroArt />
+                            <GlobeHero />
                         </div>
                     </div>
                 </div>
