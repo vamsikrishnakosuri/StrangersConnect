@@ -83,6 +83,7 @@ interface Peer {
     id: string
     dev: string | null
     net: string
+    skipUntil?: number // set when you press Next on them: not matched again for a while
 }
 
 type Inbound = { t: string; d?: any }
@@ -255,11 +256,17 @@ export class Lobby extends DurableObject<Env> {
             .map((s) => ({ s, a: this.att(s) }))
             .filter(({ a }) => a.waitingSince !== null && !a.matchedWith && a.userId)
 
-        for (const { s, a } of waiting) {
-            // Skip the person you just left, and anyone either side asked never to meet again
-            if (me.recentPeers[0]?.id === a.userId || a.recentPeers[0]?.id === me.userId) continue
-            if (a.deviceHash && a.deviceHash === me.deviceHash) continue
-            if (this.avoided(me.deviceHash, a.deviceHash)) continue
+        const now = Date.now()
+        const recentOf = (x: Attachment, id: string | null) => x.recentPeers.find((p) => p.id === id)
+        const skipped = (a: Attachment) =>
+            (recentOf(me, a.userId)?.skipUntil ?? 0) > now || (recentOf(a, me.userId)?.skipUntil ?? 0) > now
+        const allowed = (a: Attachment) =>
+            !(a.deviceHash && a.deviceHash === me.deviceHash) && !this.avoided(me.deviceHash, a.deviceHash) && !skipped(a)
+        // New faces first; someone you met recently only if nobody else is waiting.
+        // "No, never" (avoid) and a recent Next (skip) always keep two people apart.
+        const fresh = waiting.filter(({ a }) => allowed(a) && !recentOf(me, a.userId) && !recentOf(a, me.userId))
+        const familiar = waiting.filter(({ a }) => allowed(a) && (recentOf(me, a.userId) || recentOf(a, me.userId)))
+        for (const { s, a } of [...fresh, ...familiar]) {
 
             me.matchedWith = a.userId
             a.matchedWith = me.userId
@@ -376,8 +383,17 @@ export class Lobby extends DurableObject<Env> {
             case 'typing': {
                 return this.send(this.peerOf(ws, d.to), 'typing', { from: me.userId, on: d.on === true })
             }
-            case 'disconnect-stranger':
+            case 'disconnect-stranger': {
+                // Pressing Next means "not this person right now"
+                if (d.skip === true && me.matchedWith) {
+                    const entry = me.recentPeers.find((p) => p.id === me.matchedWith)
+                    if (entry) {
+                        entry.skipUntil = Date.now() + 2 * 60 * 1000
+                        this.save(ws, me)
+                    }
+                }
                 return this.unmatch(ws)
+            }
             case 'report-user':
                 return this.fileReport(ws, d.reportedUserId)
             case 'avoid': {

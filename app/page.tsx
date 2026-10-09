@@ -113,6 +113,8 @@ export default function Home() {
     const [rematchAnswer, setRematchAnswer] = useState<'yes' | 'no' | null>(null)
     const [strangerTyping, setStrangerTyping] = useState(false)
     const [showSafety, setShowSafety] = useState(false)
+    // Countdown to the next search after the other person leaves (null = off)
+    const [autoNext, setAutoNext] = useState<number | null>(null)
     // A message held back because it looks like personal info, waiting for "send anyway"
     const [pendingSend, setPendingSend] = useState<{ text: string; kinds: string[] } | null>(null)
     const [revealed, setRevealed] = useState<Set<string>>(new Set())
@@ -1668,6 +1670,7 @@ export default function Home() {
             resetEncryption()
             setMessages([])
             setCallEnded('The other person left the conversation.')
+            setAutoNext(5)
         })
 
         newSocket.on('key-exchange', async (data: { publicKey: string; from: string }) => {
@@ -1761,6 +1764,7 @@ export default function Home() {
     // Open the camera first, so the person you meet never waits on a permission prompt
     const findStranger = async () => {
         if (!socket) return
+        setAutoNext(null)
         window.scrollTo({ top: 0, behavior: 'smooth' })
         setCallEnded(null)
         setIsSearching(true)
@@ -1805,8 +1809,8 @@ export default function Home() {
     // Skip to the next stranger
     const skipStranger = () => {
         if (socket && strangerId) {
-            // Disconnect from current stranger
-            socket.emit('disconnect-stranger', { strangerId })
+            // Disconnect from current stranger; "skip" keeps them away from you for a little while
+            socket.emit('disconnect-stranger', { strangerId, skip: true })
             setIsMatched(false)
             setLastPeer(strangerIdRef.current)
             setRematchAnswer(null)
@@ -1897,6 +1901,18 @@ export default function Home() {
         return () => window.removeEventListener('keydown', onKey)
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isMatched, showReportModal, showAgeGate, strangerId])
+
+    // Tick the auto-search countdown and start searching when it reaches zero
+    useEffect(() => {
+        if (autoNext === null || isMatched || isSearching || !callEnded) return
+        if (autoNext <= 0) {
+            findStranger()
+            return
+        }
+        const t = setTimeout(() => setAutoNext((n) => (n === null ? null : n - 1)), 1000)
+        return () => clearTimeout(t)
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [autoNext, isMatched, isSearching, callEnded])
 
     const toggleSafeStart = (on: boolean) => {
         setSafeStart(on)
@@ -2465,7 +2481,7 @@ export default function Home() {
                                             </div>
                                             {faceLoading && <span className="font-mono text-[10.5px] text-paper-faint">loading…</span>}
                                         </div>
-                                        <div className="picker-rail flex snap-x snap-mandatory gap-3 overflow-x-auto overscroll-x-contain scrollbar-none px-3 pb-1 pt-1">
+                                        <PickerRail resetKey={filterTab}>
                                             {filterTab === 'background'
                                                 ? BACKGROUNDS.map((b) => (
                                                       <PickerItem
@@ -2494,7 +2510,7 @@ export default function Home() {
                                                               {f === 'none' ? <OffGlyph /> : <span className="text-[22px] leading-none">{FILTERS[f].thumb}</span>}
                                                           </PickerItem>
                                                       ))}
-                                        </div>
+                                        </PickerRail>
                                         <input
                                             ref={bgInputRef}
                                             type="file"
@@ -2822,10 +2838,24 @@ export default function Home() {
                         <button onClick={requestStart} disabled={!isConnected} className="btn-primary px-7 py-3.5 text-[15px]">
                             Meet someone new
                         </button>
-                        <button onClick={() => setCallEnded(null)} className="btn-ghost px-6 py-3.5 text-[15px]">
+                        <button
+                            onClick={() => {
+                                setAutoNext(null)
+                                setCallEnded(null)
+                            }}
+                            className="btn-ghost px-6 py-3.5 text-[15px]"
+                        >
                             Back to home
                         </button>
                     </div>
+                    {autoNext !== null && (
+                        <p className="mt-6 text-sm text-paper-mute animate-fade-in">
+                            Finding someone new in <span className="font-mono text-paper">{autoNext}</span>…{' '}
+                            <button onClick={() => setAutoNext(null)} className="text-paper underline underline-offset-4 hover:text-glow-soft">
+                                Cancel
+                            </button>
+                        </p>
+                    )}
                 </section>
             )}
 
@@ -2901,6 +2931,47 @@ export default function Home() {
                     </button>
                 </div>
             </footer>
+        </div>
+    )
+}
+
+// Horizontal picker with arrow buttons that appear only when there is more to see
+function PickerRail({ children, resetKey }: { children: React.ReactNode; resetKey: string }) {
+    const ref = useRef<HTMLDivElement>(null)
+    const [edges, setEdges] = useState({ left: false, right: false })
+    const update = () => {
+        const el = ref.current
+        if (!el) return
+        setEdges({ left: el.scrollLeft > 4, right: el.scrollLeft + el.clientWidth < el.scrollWidth - 4 })
+    }
+    useEffect(() => {
+        ref.current?.scrollTo({ left: 0 })
+        update()
+        const el = ref.current
+        if (!el) return
+        const ro = new ResizeObserver(update)
+        ro.observe(el)
+        return () => ro.disconnect()
+    }, [resetKey])
+    const page = (dir: 1 | -1) => ref.current?.scrollBy({ left: dir * (ref.current.clientWidth * 0.7), behavior: 'smooth' })
+    const Arrow = ({ dir }: { dir: 1 | -1 }) => (
+        <button
+            onClick={() => page(dir)}
+            aria-label={dir < 0 ? 'Previous' : 'Next'}
+            className={`absolute top-[20px] z-10 grid h-8 w-8 place-items-center rounded-full border border-paper/15 bg-ink-900/90 text-paper shadow-lg backdrop-blur transition hover:bg-paper hover:text-ink-900 ${dir < 0 ? 'left-0.5' : 'right-0.5'}`}
+        >
+            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d={dir < 0 ? 'M15 6l-6 6 6 6' : 'M9 6l6 6-6 6'} />
+            </svg>
+        </button>
+    )
+    return (
+        <div className="relative">
+            {edges.left && <Arrow dir={-1} />}
+            <div ref={ref} onScroll={update} className="picker-rail flex snap-x snap-mandatory gap-3 overflow-x-auto overscroll-x-contain scrollbar-none px-3 pb-1 pt-1">
+                {children}
+            </div>
+            {edges.right && <Arrow dir={1} />}
         </div>
     )
 }
