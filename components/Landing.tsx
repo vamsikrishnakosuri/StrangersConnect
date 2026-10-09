@@ -1,5 +1,9 @@
+'use client'
+
 import { FAQ } from '@/lib/site'
-import { HeroIllustration, LineIcon, PrivacyDiagram } from './Illustrations'
+import { LineIcon, PrivacyDiagram } from './Illustrations'
+import { HeroArt } from './HeroArt'
+import ScrollScenes from './ScrollScenes'
 
 type Props = {
     onStart: () => void
@@ -52,11 +56,17 @@ function Ribbons() {
 export default function Landing({ onStart, isConnected }: Props) {
     return (
         <main>
+            <ScrollScenes />
             {/* Hero */}
-            <section className="relative overflow-hidden">
-                <div className="paper-grid absolute inset-0" aria-hidden="true" />
-                <Ribbons />
+            <section className="relative" data-scene="hero">
+                <div className="absolute inset-0 overflow-hidden" aria-hidden="true">
+                    <div data-anim="blob-a" className="absolute inset-0"><div className="hero-blob hero-blob-a" /></div>
+                    <div data-anim="blob-b" className="absolute inset-0"><div className="hero-blob hero-blob-b" /></div>
+                    <div className="paper-grid absolute inset-0" />
+                    <div data-anim="ribbons" className="absolute inset-0"><Ribbons /></div>
+                </div>
                 <div className="relative mx-auto max-w-page px-4 sm:px-6 pt-16 sm:pt-24 text-center">
+                    <div data-anim="hero-text">
                     <div className="rise"><Eyebrow>Free random video chat</Eyebrow></div>
                     <h1 className="rise mt-6 font-serif text-[clamp(3rem,9vw,6.75rem)] leading-[0.95] tracking-[-0.02em] text-paper" style={{ ['--delay' as string]: '0.08s' }}>
                         Talk to someone new.
@@ -74,8 +84,11 @@ export default function Landing({ onStart, isConnected }: Props) {
                     <p className="rise mt-5 font-mono text-[11px] text-paper-faint" style={{ ['--delay' as string]: '0.3s' }}>
                         Works in any browser on desktop, iPhone and Android · 18+
                     </p>
+                    </div>
                     <div className="rise mx-auto mt-10 sm:mt-6 max-w-[620px]" style={{ ['--delay' as string]: '0.2s' }}>
-                        <HeroIllustration />
+                        <div data-anim="hero-art" className="origin-center">
+                            <HeroArt />
+                        </div>
                     </div>
                 </div>
             </section>
@@ -89,7 +102,7 @@ export default function Landing({ onStart, isConnected }: Props) {
                         ['1 click', 'To skip to the next person'],
                         ['0', 'Messages or calls stored, ever'],
                     ].map(([k, v], i) => (
-                        <li key={k} className={`py-7 px-4 sm:px-6 ${i > 0 ? 'md:border-l' : ''} ${i % 2 === 1 ? 'border-l' : ''} ${i > 1 ? 'border-t md:border-t-0' : ''} border-paper/10`}>
+                        <li key={k} data-anim="stat" className={`py-7 px-4 sm:px-6 ${i > 0 ? 'md:border-l' : ''} ${i % 2 === 1 ? 'border-l' : ''} ${i > 1 ? 'border-t md:border-t-0' : ''} border-paper/10`}>
                             <p className="font-serif text-3xl text-paper">{k}</p>
                             <p className="mt-1 text-sm text-paper-mute">{v}</p>
                         </li>
@@ -97,21 +110,38 @@ export default function Landing({ onStart, isConnected }: Props) {
                 </ul>
             </section>
 
+            {/* Statement: words light up as you scroll */}
+            <section data-scene="statement" className="relative flex min-h-[100svh] items-center">
+                <div className="mx-auto w-full max-w-page px-4 sm:px-6 py-24">
+                    <p className="font-serif text-[clamp(2.1rem,5.6vw,4.6rem)] leading-[1.06] tracking-[-0.015em] max-w-5xl">
+                        {'Two strangers. One click. A real conversation, sent straight between you. Nothing stored. Nothing sold. Nothing in between.'
+                            .split(' ')
+                            .map((word, i) => (
+                                <span key={i} data-anim="word" className="statement-word">
+                                    {word}{' '}
+                                </span>
+                            ))}
+                    </p>
+                </div>
+            </section>
+
             {/* How it works */}
-            <section id="how" className="mx-auto max-w-page px-4 sm:px-6 py-24 sm:py-32 scroll-mt-24">
+            <section id="how" data-scene="how" className="mx-auto max-w-page px-4 sm:px-6 py-24 sm:py-32 scroll-mt-24">
                 <div className="max-w-2xl">
                     <Eyebrow>How it works</Eyebrow>
                     <h2 className="mt-4 font-serif text-4xl sm:text-5xl leading-[1.05] tracking-[-0.01em]">
                         Three steps. <em className="text-paper-dim">No onboarding.</em>
                     </h2>
                 </div>
-                <ol className="mt-14 grid md:grid-cols-3 border-t border-paper/10">
+                <div className="relative mt-14">
+                <span data-anim="how-line" className="absolute left-0 top-0 h-px w-full origin-left bg-gradient-to-r from-glow/0 via-glow to-glow/0" aria-hidden="true" />
+                <ol className="grid md:grid-cols-3 border-t border-paper/10">
                     {[
                         { n: '01', icon: 'camera' as const, t: 'Allow your camera', d: 'Your browser asks once. Nothing is installed and nothing is uploaded to us.' },
                         { n: '02', icon: 'shuffle' as const, t: 'Get matched', d: 'We pair you with the next person who is waiting, usually in a few seconds.' },
                         { n: '03', icon: 'next' as const, t: 'Talk, or move on', d: 'Chat as long as you like. Not a fit? Press Next and meet someone else.' },
                     ].map((s, i) => (
-                        <li key={s.n} className={`pt-8 pb-4 md:pr-10 ${i > 0 ? 'md:pl-10 md:border-l border-t md:border-t-0' : ''} border-paper/10`}>
+                        <li key={s.n} data-anim="step" className={`pt-8 pb-4 md:pr-10 ${i > 0 ? 'md:pl-10 md:border-l border-t md:border-t-0' : ''} border-paper/10`}>
                             <div className="flex items-center justify-between text-paper-dim">
                                 <LineIcon name={s.icon} />
                                 <span className="font-mono text-xs text-paper-faint">{s.n}</span>
@@ -121,10 +151,11 @@ export default function Landing({ onStart, isConnected }: Props) {
                         </li>
                     ))}
                 </ol>
+                </div>
             </section>
 
             {/* Privacy */}
-            <section id="privacy" className="border-y border-paper/10 bg-ink-850/60 scroll-mt-24">
+            <section id="privacy" data-scene="privacy" className="border-y border-paper/10 bg-ink-850/60 scroll-mt-24">
                 <div className="mx-auto max-w-page px-4 sm:px-6 py-24 sm:py-32 grid lg:grid-cols-[1fr_1.15fr] gap-14 items-center">
                     <div>
                         <Eyebrow>Privacy by architecture</Eyebrow>
@@ -144,42 +175,54 @@ export default function Landing({ onStart, isConnected }: Props) {
                                 ['No identity', 'No account, no email, no profile. IP addresses are never stored, only a one-way hash if someone is banned.'],
                                 ['Community safety', 'One-tap reporting. Repeated reports trigger an automatic ban.'],
                             ].map(([t, d]) => (
-                                <li key={t} className="flex gap-4">
+                                <li key={t} data-anim="bullet" className="flex gap-4">
                                     <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-glow breathe" />
                                     <span><span className="text-paper">{t}.</span> <span className="text-paper-mute">{d}</span></span>
                                 </li>
                             ))}
                         </ul>
                     </div>
-                    <div className="rounded-2xl border border-paper/10 bg-ink-900 p-4 sm:p-8">
+                    <div data-anim="diagram" className="rounded-2xl border border-paper/10 bg-ink-900 p-4 sm:p-8">
                         <PrivacyDiagram />
                     </div>
                 </div>
             </section>
 
             {/* Features */}
-            <section id="features" className="mx-auto max-w-page px-4 sm:px-6 py-24 sm:py-32 scroll-mt-24">
+            <section id="features" data-scene="features" className="mx-auto max-w-page px-4 sm:px-6 py-24 sm:py-32 scroll-mt-24">
                 <div className="max-w-2xl">
                     <Eyebrow>Inside the call</Eyebrow>
                     <h2 className="mt-4 font-serif text-4xl sm:text-5xl leading-[1.05] tracking-[-0.01em]">
                         Small details, <em className="text-paper-dim">done right.</em>
                     </h2>
                 </div>
-                <div className="mt-14 grid sm:grid-cols-2 lg:grid-cols-3 gap-px bg-paper/10 border border-paper/10 rounded-2xl overflow-hidden">
+                {/* A stacked deck that deals itself out as you scroll */}
+                <div data-anim="deck" className="mt-14 grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
                     {[
-                        { icon: 'camera' as const, t: 'HD video', d: 'Adaptive quality that stays smooth on Wi-Fi or mobile data.' },
-                        { icon: 'chat' as const, t: 'Text alongside', d: 'Share a link or spell a name without breaking the conversation.' },
-                        { icon: 'next' as const, t: 'Next in one tap', d: 'Skip instantly and you are already searching for the next person.' },
-                        { icon: 'swap' as const, t: 'Swap and zoom', d: 'Tap to swap views. Pinch or scroll to zoom, just like on your phone.' },
-                        { icon: 'flag' as const, t: 'Report and ban', d: 'Bad actors are removed automatically after repeated reports.' },
-                        { icon: 'nokey' as const, t: 'No account', d: 'No email, no phone number, no profile. Nothing to sign up for and nothing to leak.' },
-                    ].map((f) => (
-                        <div key={f.t} className="group bg-ink-900 p-8 transition-colors hover:bg-ink-850">
-                            <div className="text-paper-dim transition-colors group-hover:text-glow">
-                                <LineIcon name={f.icon} />
+                        { icon: 'camera' as const, t: 'HD video', d: 'Adaptive quality that stays smooth on Wi-Fi or mobile data.', from: '#7cb4ff', to: '#a78bfa' },
+                        { icon: 'chat' as const, t: 'Chat and emoji', d: 'Type, react with floating emoji, and break the ice. All end-to-end encrypted.', from: '#ff8fc8', to: '#ffb36b' },
+                        { icon: 'next' as const, t: 'Next in one tap', d: 'Skip instantly and you are already searching for the next person.', from: '#5eead4', to: '#7cb4ff' },
+                        { icon: 'swap' as const, t: 'Face filters', d: 'Bunny ears, big eyes, neon and more, or blur yourself for privacy. All on your device.', from: '#f2c14e', to: '#ff8fc8' },
+                        { icon: 'flag' as const, t: 'Report and ban', d: 'Bad actors are removed automatically after reports from several people.', from: '#a78bfa', to: '#ff8fc8' },
+                        { icon: 'nokey' as const, t: 'No account', d: 'No email, no phone number, no profile. Nothing to sign up for and nothing to leak.', from: '#86efac', to: '#5eead4' },
+                    ].map((f, i) => (
+                        <div key={f.t} data-anim="card" className="relative" style={{ zIndex: 10 + i }}>
+                            <div
+                                className="feature-card group h-full rounded-[22px] p-px transition-transform duration-500 hover:-translate-y-1.5"
+                                style={{ ['--from' as string]: f.from, ['--to' as string]: f.to }}
+                            >
+                                <div className="relative h-full overflow-hidden rounded-[21px] bg-ink-900 p-7 sm:p-8">
+                                    <div className="feature-card-glow" aria-hidden="true" />
+                                    <div className="relative flex items-center justify-between">
+                                        <div className="grid h-12 w-12 place-items-center rounded-2xl border border-paper/10 bg-ink-850" style={{ color: f.from }}>
+                                            <LineIcon name={f.icon} />
+                                        </div>
+                                        <span className="font-mono text-[11px] text-paper-faint">0{i + 1}</span>
+                                    </div>
+                                    <h3 className="relative mt-7 text-[18px] font-medium text-paper">{f.t}</h3>
+                                    <p className="relative mt-2 text-[15px] leading-relaxed text-paper-mute">{f.d}</p>
+                                </div>
                             </div>
-                            <h3 className="mt-6 text-[17px] font-medium text-paper">{f.t}</h3>
-                            <p className="mt-2 text-[15px] leading-relaxed text-paper-mute">{f.d}</p>
                         </div>
                     ))}
                 </div>
@@ -212,10 +255,10 @@ export default function Landing({ onStart, isConnected }: Props) {
             </section>
 
             {/* Closing CTA */}
-            <section className="relative overflow-hidden border-t border-paper/10">
+            <section data-scene="closing" className="relative overflow-hidden border-t border-paper/10">
                 <div className="paper-grid absolute inset-0 rotate-180" aria-hidden="true" />
                 <div className="relative mx-auto max-w-page px-4 sm:px-6 py-28 sm:py-36 text-center">
-                    <h2 className="font-serif text-[clamp(2.5rem,7vw,5rem)] leading-[1] tracking-[-0.02em]">
+                    <h2 data-anim="closing" className="font-serif text-[clamp(2.5rem,7vw,5rem)] leading-[1] tracking-[-0.02em]">
                         Someone is waiting
                         <br />
                         <em className="text-glow-soft">to say hello.</em>

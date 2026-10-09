@@ -9,18 +9,28 @@ import { SearchRings } from '@/components/Illustrations'
 import { LogoMark } from '@/components/Logo'
 import { drawFaceFx, loadFaceLandmarker, type FaceFx } from '@/lib/faceFx'
 import type { FaceLandmarker, NormalizedLandmark } from '@mediapipe/tasks-vision'
+import type { FaceRenderer, WarpName } from '@/lib/faceRender'
+import type { PaintName } from '@/lib/faceTextures'
 
-type VideoFilter = 'none' | FaceFx | 'blur' | 'pixel'
+type PropName = 'bunny' | 'kitty' | 'shades'
+type VideoFilter = 'none' | PaintName | WarpName | PropName | 'blur' | 'pixel'
 
-const FILTERS: Record<VideoFilter, { label: string; css: string; face?: boolean }> = {
-    none: { label: 'Off', css: 'none' },
-    bunny: { label: 'Bunny', css: 'none', face: true },
-    kitty: { label: 'Kitty', css: 'none', face: true },
-    bigeyes: { label: 'Big eyes', css: 'none', face: true },
-    bignose: { label: 'Big nose', css: 'none', face: true },
-    shades: { label: 'Shades', css: 'none', face: true },
-    blur: { label: 'Blur', css: 'blur(16px)' },
-    pixel: { label: 'Pixelate', css: 'none' },
+type FilterDef = { label: string; css: string; face?: boolean; paint?: PaintName; warp?: WarpName; prop?: PropName; group: 'off' | 'fun' | 'privacy' }
+
+const FILTERS: Record<VideoFilter, FilterDef> = {
+    none: { label: 'Off', css: 'none', group: 'off' },
+    neon: { label: 'Neon', css: 'none', face: true, paint: 'neon', group: 'fun' },
+    bigeyes: { label: 'Big eyes', css: 'none', face: true, warp: 'bigeyes', group: 'fun' },
+    alien: { label: 'Alien', css: 'none', face: true, warp: 'alien', group: 'fun' },
+    tiger: { label: 'Tiger', css: 'none', face: true, paint: 'tiger', group: 'fun' },
+    glam: { label: 'Glam', css: 'none', face: true, paint: 'glam', group: 'fun' },
+    skull: { label: 'Skull', css: 'none', face: true, paint: 'skull', group: 'fun' },
+    bunny: { label: 'Bunny', css: 'none', face: true, prop: 'bunny', group: 'fun' },
+    kitty: { label: 'Kitty', css: 'none', face: true, prop: 'kitty', group: 'fun' },
+    shades: { label: 'Shades', css: 'none', face: true, prop: 'shades', group: 'fun' },
+    bignose: { label: 'Big nose', css: 'none', face: true, warp: 'bignose', group: 'fun' },
+    blur: { label: 'Blur', css: 'blur(16px)', group: 'privacy' },
+    pixel: { label: 'Pixelate', css: 'none', group: 'privacy' },
 }
 
 // Older Safari has no canvas filters; there, Blur falls back to a heavy mosaic
@@ -91,9 +101,10 @@ export default function Home() {
     // Privacy filters run on this device before video is sent, so the raw face never leaves it
     const [videoFilter, setVideoFilter] = useState<VideoFilter>('none')
     const filterRef = useRef<VideoFilter>('none')
-    const filterPipeRef = useRef<{ timer: ReturnType<typeof setInterval>; track: MediaStreamTrack; video: HTMLVideoElement } | null>(null)
+    const filterPipeRef = useRef<{ timer: ReturnType<typeof setInterval>; track: MediaStreamTrack; video: HTMLVideoElement; renderer: FaceRenderer | null } | null>(null)
     const [localPreview, setLocalPreview] = useState<MediaStream | null>(null)
     const faceLmRef = useRef<FaceLandmarker | null>(null)
+    const faceRenderModRef = useRef<typeof import('@/lib/faceRender') | null>(null)
     const [faceLoading, setFaceLoading] = useState(false)
     const [openPanel, setOpenPanel] = useState<'none' | 'volume' | 'filters' | 'react'>('none')
     const [floaters, setFloaters] = useState<{ id: string; e: string; x: number; mine: boolean }[]>([])
@@ -878,19 +889,36 @@ export default function Home() {
                 ctx.drawImage(small, 0, 0, w, h)
                 return
             }
-            if (FILTERS[f].face) {
+            const def = FILTERS[f]
+            if (def.face) {
                 fctx.drawImage(video, 0, 0, w, h)
-                ctx.drawImage(frame, 0, 0)
                 const lmk = faceLmRef.current
-                if (!lmk) return
-                try {
-                    const res = lmk.detectForVideo(frame, performance.now())
-                    if (res.faceLandmarks[0]) lastFace = { lm: res.faceLandmarks[0], at: performance.now() }
-                } catch {
-                    // a dropped frame is fine
+                if (lmk) {
+                    try {
+                        const res = lmk.detectForVideo(frame, performance.now())
+                        if (res.faceLandmarks[0]) lastFace = { lm: res.faceLandmarks[0], at: performance.now() }
+                    } catch {
+                        // a dropped frame is fine
+                    }
                 }
                 // Keep the effect on through brief tracking blips
-                if (lastFace && performance.now() - lastFace.at < 400) drawFaceFx(ctx, frame, lastFace.lm, f as FaceFx, scratch)
+                const lm = lastFace && performance.now() - lastFace.at < 400 ? lastFace.lm : null
+                const pipe = filterPipeRef.current
+                if ((def.paint || def.warp) && pipe && faceRenderModRef.current) {
+                    if (!pipe.renderer) {
+                        try {
+                            pipe.renderer = new faceRenderModRef.current.FaceRenderer(frame)
+                        } catch (error) {
+                            console.error('WebGL unavailable for face effects:', error)
+                        }
+                    }
+                }
+                if ((def.paint || def.warp) && pipe?.renderer) {
+                    ctx.drawImage(pipe.renderer.render(lm, { warp: def.warp, paint: def.paint }), 0, 0)
+                } else {
+                    ctx.drawImage(frame, 0, 0)
+                }
+                if (def.prop && lm) drawFaceFx(ctx, frame, lm, def.prop as FaceFx, scratch)
                 return
             }
             ctx.filter = CANVAS_FILTERS ? FILTERS[f].css : 'none'
@@ -899,7 +927,7 @@ export default function Home() {
         }
         const timer = setInterval(draw, 1000 / 24)
         const track = canvas.captureStream(24).getVideoTracks()[0]
-        filterPipeRef.current = { timer, track, video }
+        filterPipeRef.current = { timer, track, video, renderer: null }
         return track
     }
 
@@ -907,16 +935,19 @@ export default function Home() {
         const pipe = filterPipeRef.current
         if (!pipe) return
         clearInterval(pipe.timer)
+        pipe.renderer?.dispose()
         pipe.track.stop()
         pipe.video.srcObject = null
         filterPipeRef.current = null
     }
 
     const ensureFaceTracker = async () => {
-        if (faceLmRef.current) return true
+        if (faceLmRef.current && faceRenderModRef.current) return true
         setFaceLoading(true)
         try {
-            faceLmRef.current = await loadFaceLandmarker()
+            const [lmk, mod] = await Promise.all([loadFaceLandmarker(), import('@/lib/faceRender')])
+            faceLmRef.current = lmk
+            faceRenderModRef.current = mod
             return true
         } catch (error) {
             console.error('Face filters unavailable:', error)
@@ -1630,6 +1661,8 @@ export default function Home() {
                         opacity: isMatched ? '1' : '0', // Hide visually but keep in DOM
                         pointerEvents: isMatched ? 'auto' : 'none',
                         height: isMatched ? undefined : '0', // Collapse when not matched; CSS sizes it otherwise
+                        minHeight: isMatched ? undefined : '0',
+                        maxHeight: isMatched ? undefined : '0',
                         overflow: 'hidden', // Keep overflow hidden but ensure video fills container
                         position: 'relative' // Establish positioning context
                     }}
@@ -2033,7 +2066,7 @@ export default function Home() {
                                     <div className="flex max-w-full items-center gap-1 overflow-x-auto rounded-full border border-paper/10 bg-ink-900/75 backdrop-blur-xl p-1.5 animate-fade-in scrollbar-none">
                                         {(Object.keys(FILTERS) as VideoFilter[]).map((f) => (
                                             <span key={f} className="contents">
-                                                {f === 'blur' && <span className="mx-1 h-5 w-px shrink-0 bg-paper/15" aria-hidden="true" />}
+                                                {(f === 'neon' || f === 'blur') && <span className="mx-1 h-5 w-px shrink-0 bg-paper/15" aria-hidden="true" />}
                                                 <button
                                                     onClick={() => chooseFilter(f)}
                                                     disabled={faceLoading}

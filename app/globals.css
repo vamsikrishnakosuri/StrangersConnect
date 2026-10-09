@@ -11,6 +11,7 @@ html {
 }
 
 body {
+  overflow-x: clip;
   background: #0e0e10;
   color: #ece9e2;
   -webkit-font-smoothing: antialiased;
@@ -306,4 +307,126 @@ input[type="range"]::-moz-range-thumb {
 
 .scrollbar-none::-webkit-scrollbar {
   display: none;
+}
+
+/* Statement words start dim; ScrollScenes brightens them as you scroll.
+   Without JavaScript or with reduced motion they stay fully readable. */
+.statement-word {
+  color: #ece9e2;
+}
+
+.js-scroll .statement-word {
+  color: rgba(236, 233, 226, 0.14);
+}
+
+html.lenis, html.lenis body {
+  height: auto;
+}
+
+.lenis.lenis-smooth {
+  scroll-behavior: auto !important;
+}
+
+/* Hero greeting: bubbles and spark pop in, hands wave */
+.pop {
+  transform-box: fill-box;
+  animation: pop 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  animation-delay: var(--delay, 0s);
+}
+
+@keyframes pop {
+  0% { transform: scale(0); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.wave {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  animation: wave 3.4s ease-in-out infinite;
+  animation-delay: var(--delay, 0s);
+}
+
+@keyframes wave {
+  0%, 55%, 100% { transform: rotate(0deg); }
+  10% { transform: rotate(16deg); }
+  20% { transform: rotate(-10deg); }
+  30% { transform: rotate(14deg); }
+  40% { transform: rotate(-6deg); }
+}
+
+.heart-beat {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: twinkle 2.4s ease-in-out 4.2s infinite;
+}
+
+@keyframes twinkle {
+  0%, 100% { transform: scale(1) rotate(0deg); opacity: 1; }
+  50% { transform: scale(0.8) rotate(20deg); opacity: 0.75; }
+}
+
+/* Blue and pink light behind the hero */
+.hero-blob {
+  position: absolute;
+  width: 46vmax;
+  height: 46vmax;
+  border-radius: 50%;
+  pointer-events: none;
+  opacity: 0.35;
+}
+
+.hero-blob-a {
+  left: -14vmax;
+  top: 10%;
+  background: radial-gradient(circle, rgba(124, 180, 255, 0.55) 0%, rgba(124, 180, 255, 0) 65%);
+  animation: drift-a 14s ease-in-out infinite;
+}
+
+.hero-blob-b {
+  right: -14vmax;
+  top: 30%;
+  background: radial-gradient(circle, rgba(255, 143, 200, 0.5) 0%, rgba(255, 143, 200, 0) 65%);
+  animation: drift-b 16s ease-in-out infinite;
+}
+
+@keyframes drift-a {
+  50% { transform: translate(4vmax, -3vmax) scale(1.08); }
+}
+
+@keyframes drift-b {
+  50% { transform: translate(-4vmax, 3vmax) scale(1.1); }
+}
+
+/* Feature cards: gradient border, soft colour glow on hover */
+.feature-card {
+  background: linear-gradient(135deg, var(--from), rgba(236, 233, 226, 0.08) 45%, var(--to));
+  box-shadow: 0 20px 50px -30px rgba(0, 0, 0, 0.9);
+}
+
+.feature-card:hover {
+  box-shadow: 0 30px 70px -30px color-mix(in srgb, var(--from) 45%, transparent);
+}
+
+.feature-card-glow {
+  position: absolute;
+  inset: -40% -40% auto auto;
+  width: 70%;
+  height: 70%;
+  border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--to) 35%, transparent) 0%, transparent 70%);
+  opacity: 0.35;
+  transition: opacity 0.5s ease, transform 0.6s ease;
+}
+
+.feature-card:hover .feature-card-glow {
+  opacity: 0.8;
+  transform: translate(-10%, 10%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pop, .wave, .heart-beat, .hero-blob-a, .hero-blob-b {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
 }
