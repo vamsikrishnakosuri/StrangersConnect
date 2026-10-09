@@ -16,8 +16,6 @@ export const metadata: Metadata = {
     description: SITE_DESCRIPTION,
     keywords: SITE_KEYWORDS,
     applicationName: SITE_NAME,
-    authors: [{ name: 'Vamsi Krishna Kosuri', url: 'https://github.com/vamsikrishnakosuri' }],
-    creator: 'Vamsi Krishna Kosuri',
     category: 'social networking',
     alternates: { canonical: '/' },
     openGraph: {
@@ -76,7 +74,6 @@ const jsonLd = {
             offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
             description: SITE_DESCRIPTION,
             image: `${SITE_URL}/opengraph-image`,
-            author: { '@type': 'Person', name: 'Vamsi Krishna Kosuri', url: 'https://github.com/vamsikrishnakosuri' },
         },
         {
             '@type': 'FAQPage',

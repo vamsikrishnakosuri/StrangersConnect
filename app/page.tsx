@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import type React from 'react'
 import { Signal, deviceId } from '@/lib/signal'
 import { v4 as uuidv4 } from 'uuid'
 import Landing from '@/components/Landing'
@@ -52,6 +53,8 @@ export default function Home() {
 
     // Report state
     const [showReportModal, setShowReportModal] = useState(false)
+    // 18+ confirmation, asked once per browser before the first match
+    const [showAgeGate, setShowAgeGate] = useState(false)
 
     // "Meet this person again?" The answer only ever narrows matching; silence means yes
     const [lastPeer, setLastPeer] = useState<string | null>(null)
@@ -900,6 +903,7 @@ export default function Home() {
             strangerIdRef.current = data.strangerId // Update ref immediately
 
             // Fresh ECDH key pair for this match; only the public half goes through the server
+            window.scrollTo({ top: 0, behavior: 'smooth' })
             setCallEnded(null)
             resetEncryption()
             const keyPair = await startKeyExchange()
@@ -1239,6 +1243,30 @@ export default function Home() {
         }
     }, [])
 
+    const hasAgreed = () => {
+        try {
+            return localStorage.getItem('sc-agreed-v1') === 'yes'
+        } catch {
+            return false
+        }
+    }
+
+    // Every Start button goes through here so nobody is matched before confirming 18+
+    const requestStart = () => {
+        if (hasAgreed()) findStranger()
+        else setShowAgeGate(true)
+    }
+
+    const acceptRules = () => {
+        try {
+            localStorage.setItem('sc-agreed-v1', 'yes')
+        } catch {
+            // private mode: we ask again next visit
+        }
+        setShowAgeGate(false)
+        findStranger()
+    }
+
     const findStranger = () => {
         if (socket) {
             window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -1359,17 +1387,13 @@ export default function Home() {
                     )}
 
                     <div className="flex items-center gap-2 shrink-0">
-                        <span className="hidden sm:flex items-center gap-2 rounded-full border border-paper/10 px-3 py-1.5 font-mono text-[11px] text-paper-mute">
-                            <span className={`h-1.5 w-1.5 rounded-full ${isConnected ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]' : 'bg-paper-faint animate-pulse'}`} />
-                            {isConnected ? 'online' : 'waking up'}
-                        </span>
                         {isMatched && (
                             <button onClick={handleReport} className="btn-ghost px-3.5 py-2 text-sm text-danger border-danger/30 hover:border-danger/60" title="Report inappropriate behavior">
                                 <Icon name="flag" /> <span className="hidden sm:inline">Report</span>
                             </button>
                         )}
                         {idle && (
-                            <button onClick={findStranger} disabled={!isConnected} className="btn-primary px-4 py-2 text-sm">
+                            <button onClick={requestStart} disabled={!isConnected} className="btn-primary px-4 py-2 text-sm">
                                 Start
                             </button>
                         )}
@@ -1414,12 +1438,12 @@ export default function Home() {
                             visibility: isMatched ? 'visible' : 'hidden',
                             // If isLocalMain is true, remote becomes PIP (small, bottom-right)
                             // If isLocalMain is false, remote is main (full screen)
-                            width: isLocalMain ? '192px' : '100%',
-                            height: isLocalMain ? '144px' : '100%',
-                            top: isLocalMain ? 'auto' : '0',
+                            width: isLocalMain ? 'var(--pip-w)' : '100%',
+                            height: isLocalMain ? 'var(--pip-h)' : '100%',
+                            top: isLocalMain ? '14px' : '0',
                             left: isLocalMain ? 'auto' : '0',
-                            right: isLocalMain ? '16px' : '0',
-                            bottom: isLocalMain ? '16px' : '0',
+                            right: isLocalMain ? '14px' : '0',
+                            bottom: isLocalMain ? 'auto' : '0',
                             zIndex: isLocalMain ? 20 : 15,
                             pointerEvents: isMatched ? 'auto' : 'none',
                             cursor: remoteVideoDragging ? 'grabbing' : 'grab'
@@ -1619,12 +1643,12 @@ export default function Home() {
                             style={{
                                 // If isLocalMain is true, local is main (full screen)
                                 // If isLocalMain is false, local is PIP (small, bottom-right)
-                                width: isLocalMain ? '100%' : '192px',
-                                height: isLocalMain ? '100%' : '144px',
-                                top: isLocalMain ? '0' : 'auto',
+                                width: isLocalMain ? '100%' : 'var(--pip-w)',
+                                height: isLocalMain ? '100%' : 'var(--pip-h)',
+                                top: isLocalMain ? '0' : '14px',
                                 left: isLocalMain ? '0' : 'auto',
-                                right: isLocalMain ? '0' : '16px',
-                                bottom: isLocalMain ? '0' : '16px',
+                                right: isLocalMain ? '0' : '14px',
+                                bottom: isLocalMain ? '0' : 'auto',
                                 zIndex: isLocalMain ? 15 : 20,
                                 pointerEvents: 'auto',
                                 cursor: localVideoDragging ? 'grabbing' : 'grab'
@@ -1760,74 +1784,67 @@ export default function Home() {
                     )}
                 </div>
                         {isMatched && (
-                            <div className="pointer-events-none absolute left-4 top-4 z-30 flex items-center gap-2 rounded-full bg-black/55 backdrop-blur-md px-3 py-1.5 font-mono text-[11px] text-paper-dim">
+                            <div className="pointer-events-none absolute left-3.5 top-3.5 z-30 flex items-center gap-2 rounded-full bg-black/45 backdrop-blur-md px-3 py-1.5 font-mono text-[10.5px] text-paper-dim animate-fade-in">
                                 <span className="h-1.5 w-1.5 rounded-full bg-glow breathe" />
-                                live · peer-to-peer · encrypted
+                                <span className="hidden sm:inline">live · peer-to-peer · </span>encrypted
+                            </div>
+                        )}
+
+                        {isMatched && (
+                            <div className="absolute inset-x-0 bottom-3 sm:bottom-5 z-30 flex flex-col items-center gap-2 px-3 dock-in">
+                                {showAudioControls && (
+                                    <div className="w-full max-w-sm rounded-2xl border border-paper/10 bg-ink-900/75 backdrop-blur-xl p-4 space-y-3 animate-fade-in">
+                                        {[
+                                            { label: 'Your mic', value: localAudioVolume, onChange: handleLocalVolumeChange },
+                                            { label: 'Their voice', value: remoteAudioVolume, onChange: handleRemoteVolumeChange },
+                                        ].map((v) => (
+                                            <label key={v.label} className="flex items-center gap-3 font-mono text-[11px] text-paper-mute">
+                                                <span className="w-20 shrink-0">{v.label}</span>
+                                                <input
+                                                    type="range"
+                                                    min="0"
+                                                    max="100"
+                                                    value={v.value}
+                                                    onChange={(e) => v.onChange(Number(e.target.value))}
+                                                    className="flex-1 h-1 rounded-full"
+                                                    style={{ background: `linear-gradient(to right, #ece9e2 ${v.value}%, rgba(236,233,226,0.15) ${v.value}%)` }}
+                                                />
+                                                <span className="w-9 text-right">{v.value}%</span>
+                                            </label>
+                                        ))}
+                                    </div>
+                                )}
+                                <div className="flex items-center gap-1.5 sm:gap-2 rounded-full border border-paper/10 bg-ink-900/60 backdrop-blur-xl p-1.5 shadow-[0_20px_60px_-20px_rgba(0,0,0,0.8)]">
+                                    <DockButton label={isLocalAudioMuted ? 'Unmute' : 'Mute'} active={isLocalAudioMuted} onClick={toggleLocalAudio}>
+                                        <Icon name={isLocalAudioMuted ? 'micOff' : 'mic'} />
+                                    </DockButton>
+                                    <DockButton label={isLocalCameraEnabled ? 'Camera off' : 'Camera on'} active={!isLocalCameraEnabled} onClick={toggleCamera}>
+                                        <Icon name={isLocalCameraEnabled ? 'cam' : 'camOff'} />
+                                    </DockButton>
+                                    <DockButton label="Volume" pressed={showAudioControls} onClick={() => setShowAudioControls(!showAudioControls)}>
+                                        <Icon name="speaker" />
+                                    </DockButton>
+                                    <span className="mx-0.5 h-6 w-px bg-paper/15" aria-hidden="true" />
+                                    <button
+                                        onClick={disconnect}
+                                        title="End conversation"
+                                        aria-label="End conversation"
+                                        className="group h-11 w-11 grid place-items-center rounded-full bg-danger/90 text-ink-900 transition hover:bg-danger hover:shadow-[0_0_24px_rgba(229,115,95,0.45)] active:scale-95"
+                                    >
+                                        <Icon name="end" />
+                                    </button>
+                                    <button
+                                        onClick={skipStranger}
+                                        title="Skip to someone new"
+                                        className="h-11 rounded-full bg-paper pl-4 pr-3.5 text-sm font-medium text-ink-900 flex items-center gap-1.5 transition hover:bg-white hover:shadow-[0_0_28px_rgba(242,193,78,0.3)] active:scale-95"
+                                    >
+                                        Next <Icon name="next" />
+                                    </button>
+                                </div>
                             </div>
                         )}
                     </div>
 
-                    {isMatched && (
-                        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-paper/10 bg-ink-850 px-3 py-3">
-                            <div className="flex items-center gap-2">
-                                <button
-                                    onClick={toggleLocalAudio}
-                                    className={`h-11 w-11 grid place-items-center rounded-full border transition-colors ${isLocalAudioMuted ? 'border-danger/50 bg-danger/15 text-danger' : 'border-paper/15 text-paper hover:bg-paper/5'}`}
-                                    title={isLocalAudioMuted ? 'Unmute microphone' : 'Mute microphone'}
-                                    aria-label={isLocalAudioMuted ? 'Unmute microphone' : 'Mute microphone'}
-                                >
-                                    <Icon name={isLocalAudioMuted ? 'micOff' : 'mic'} />
-                                </button>
-                                <button
-                                    onClick={toggleCamera}
-                                    className={`h-11 w-11 grid place-items-center rounded-full border transition-colors ${!isLocalCameraEnabled ? 'border-danger/50 bg-danger/15 text-danger' : 'border-paper/15 text-paper hover:bg-paper/5'}`}
-                                    title={isLocalCameraEnabled ? 'Turn off camera' : 'Turn on camera'}
-                                    aria-label={isLocalCameraEnabled ? 'Turn off camera' : 'Turn on camera'}
-                                >
-                                    <Icon name={isLocalCameraEnabled ? 'cam' : 'camOff'} />
-                                </button>
-                                <button
-                                    onClick={() => setShowAudioControls(!showAudioControls)}
-                                    className={`h-11 w-11 grid place-items-center rounded-full border transition-colors ${showAudioControls ? 'border-paper/40 bg-paper/10' : 'border-paper/15 hover:bg-paper/5'} text-paper`}
-                                    title="Volume"
-                                    aria-label="Volume settings"
-                                    aria-expanded={showAudioControls}
-                                >
-                                    <Icon name="speaker" />
-                                </button>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <button onClick={disconnect} className="btn-ghost px-4 py-2.5 text-sm text-danger border-danger/30 hover:border-danger/60">
-                                    <Icon name="end" /> End
-                                </button>
-                                <button onClick={skipStranger} className="btn-primary px-5 py-2.5 text-sm">
-                                    Next <Icon name="next" />
-                                </button>
-                            </div>
-                            {showAudioControls && (
-                                <div className="w-full grid sm:grid-cols-2 gap-4 border-t border-paper/10 pt-3 px-1 animate-fade-in">
-                                    {[
-                                        { label: 'Your mic', value: localAudioVolume, onChange: handleLocalVolumeChange },
-                                        { label: 'Their voice', value: remoteAudioVolume, onChange: handleRemoteVolumeChange },
-                                    ].map((s) => (
-                                        <label key={s.label} className="flex items-center gap-3 font-mono text-[11px] text-paper-mute">
-                                            <span className="w-20 shrink-0">{s.label}</span>
-                                            <input
-                                                type="range"
-                                                min="0"
-                                                max="100"
-                                                value={s.value}
-                                                onChange={(e) => s.onChange(Number(e.target.value))}
-                                                className="flex-1 h-1 rounded-full"
-                                                style={{ background: `linear-gradient(to right, #ece9e2 ${s.value}%, rgba(236,233,226,0.15) ${s.value}%)` }}
-                                            />
-                                            <span className="w-9 text-right">{s.value}%</span>
-                                        </label>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-                    )}
                 </div>
 
                 {/* Chat */}
@@ -1931,8 +1948,8 @@ export default function Home() {
 
             {/* Searching */}
             {isSearching && (
-                <section className="relative z-10 mx-auto max-w-page px-4 sm:px-6 py-20 sm:py-28 flex flex-col items-center text-center" aria-live="polite">
-                    <SearchRings />
+                <section className="relative z-10 mx-auto max-w-page px-4 sm:px-6 py-16 sm:py-24 flex flex-col items-center text-center rise" aria-live="polite">
+                    <Orbit />
                     <p className="mt-6 font-mono text-[11px] uppercase tracking-[0.22em] text-paper-mute">Matching</p>
                     <h2 className="mt-3 font-serif text-4xl sm:text-5xl">
                         Finding <em className="text-glow-soft">someone new…</em>
@@ -1943,7 +1960,7 @@ export default function Home() {
                             <RematchQuestion answer={rematchAnswer} onAnswer={answerRematch} />
                         </div>
                     )}
-                    <button onClick={cancelSearch} className="mt-8 text-sm text-paper-faint underline-offset-4 hover:text-paper hover:underline">
+                    <button onClick={cancelSearch} className="btn-ghost mt-8 px-5 py-2.5 text-sm text-paper-mute">
                         Cancel
                     </button>
                 </section>
@@ -1951,8 +1968,9 @@ export default function Home() {
 
             {/* After a call */}
             {idle && callEnded && (
-                <section className="relative z-10 mx-auto max-w-page px-4 sm:px-6 py-20 sm:py-28 text-center">
-                    <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-paper-mute">Conversation ended</p>
+                <section className="relative z-10 mx-auto max-w-page px-4 sm:px-6 py-16 sm:py-24 text-center rise">
+                    <CupsLine />
+                    <p className="mt-6 font-mono text-[11px] uppercase tracking-[0.22em] text-paper-mute">Conversation ended</p>
                     <h2 className="mt-4 font-serif text-4xl sm:text-6xl leading-[1.02]">
                         Ready for <em className="text-glow-soft">the next one?</em>
                     </h2>
@@ -1963,7 +1981,7 @@ export default function Home() {
                         </div>
                     )}
                     <div className="mt-9 flex flex-col sm:flex-row items-center justify-center gap-3">
-                        <button onClick={findStranger} disabled={!isConnected} className="btn-primary px-7 py-3.5 text-[15px]">
+                        <button onClick={requestStart} disabled={!isConnected} className="btn-primary px-7 py-3.5 text-[15px]">
                             Meet someone new
                         </button>
                         <button onClick={() => setCallEnded(null)} className="btn-ghost px-6 py-3.5 text-[15px]">
@@ -1974,12 +1992,45 @@ export default function Home() {
             )}
 
             {/* Marketing landing */}
-            {idle && !callEnded && <Landing onStart={findStranger} isConnected={isConnected} />}
+            {idle && !callEnded && <Landing onStart={requestStart} isConnected={isConnected} />}
 
             {/* Toast */}
             {notice && (
                 <div role="status" className="fixed bottom-5 left-1/2 z-50 -translate-x-1/2 rounded-full border border-paper/15 bg-ink-800/95 backdrop-blur px-5 py-3 text-sm text-paper shadow-2xl animate-fade-in">
                     {notice}
+                </div>
+            )}
+
+            {/* 18+ and rules */}
+            {showAgeGate && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="age-title">
+                    <div className="max-w-md w-full max-h-[90vh] overflow-y-auto rounded-3xl border border-paper/10 bg-ink-850 p-7 shadow-2xl animate-fade-in">
+                        <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-glow-soft">Adults only</p>
+                        <h3 id="age-title" className="mt-3 font-serif text-3xl leading-tight">Before you meet <em>someone new</em></h3>
+                        <ul className="mt-5 space-y-3 text-[14.5px] leading-relaxed text-paper-mute">
+                            {[
+                                ['You are 18 or older.', 'Strangers Connect is only for adults.'],
+                                ['You meet real, unknown people.', 'We cannot see or control what others say or show, and we are not responsible for their behavior.'],
+                                ['Keep yourself safe.', 'Do not share your full name, address, passwords or anything you would not tell a stranger on the street.'],
+                                ['Be decent.', 'No nudity, harassment, hate or anything illegal. Press Report and you are disconnected instantly.'],
+                                ['Nothing is recorded by us,', 'but the other person could record their own screen. Act accordingly.'],
+                            ].map(([t, d]) => (
+                                <li key={t} className="flex gap-3">
+                                    <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-glow" />
+                                    <span><span className="text-paper">{t}</span> {d}</span>
+                                </li>
+                            ))}
+                        </ul>
+                        <div className="mt-7 flex flex-col-reverse sm:flex-row gap-3">
+                            <button onClick={() => setShowAgeGate(false)} className="btn-ghost flex-1 justify-center py-3 text-sm">
+                                I am under 18
+                            </button>
+                            <button onClick={acceptRules} disabled={!isConnected} className="btn-primary flex-1 justify-center py-3 text-sm">
+                                I am 18+ and agree
+                            </button>
+                        </div>
+                        <p className="mt-4 text-center text-xs text-paper-faint">You use Strangers Connect at your own risk.</p>
+                    </div>
                 </div>
             )}
 
@@ -2007,12 +2058,75 @@ export default function Home() {
                         <span className="font-serif text-lg text-paper-dim">Strangers Connect</span>
                         <span className="ml-3">Free, private, for adults 18+.</span>
                     </p>
-                    <p className="flex flex-wrap items-center gap-x-5 gap-y-2">
-                        <span>© {new Date().getFullYear()} Vamsi Krishna Kosuri</span>
-                    </p>
+                    <button onClick={() => setShowAgeGate(true)} className="hover:text-paper transition-colors">
+                        Rules and safety
+                    </button>
                 </div>
             </footer>
         </div>
+    )
+}
+
+function DockButton({ label, active, pressed, onClick, children }: { label: string; active?: boolean; pressed?: boolean; onClick: () => void; children: React.ReactNode }) {
+    return (
+        <button
+            onClick={onClick}
+            title={label}
+            aria-label={label}
+            aria-pressed={pressed ?? active}
+            className={`h-11 w-11 grid place-items-center rounded-full transition active:scale-95 ${
+                active ? 'bg-paper text-ink-900' : pressed ? 'bg-paper/15 text-paper' : 'text-paper hover:bg-paper/10'
+            }`}
+        >
+            {children}
+        </button>
+    )
+}
+
+// Two people circling until they find each other
+function Orbit() {
+    return (
+        <svg viewBox="0 0 200 200" className="h-44 w-44 sm:h-52 sm:w-52" aria-hidden="true">
+            <defs>
+                <filter id="orbit-glow" x="-100%" y="-100%" width="300%" height="300%">
+                    <feGaussianBlur stdDeviation="3" />
+                </filter>
+            </defs>
+            <circle cx="100" cy="100" r="70" fill="none" stroke="#ece9e2" strokeOpacity="0.08" />
+            <circle cx="100" cy="100" r="46" fill="none" stroke="#ece9e2" strokeOpacity="0.12" strokeDasharray="2 6" className="spin-slow" />
+            <g className="orbit-a">
+                <circle cx="100" cy="30" r="5" fill="#ece9e2" />
+            </g>
+            <g className="orbit-b">
+                <circle cx="100" cy="170" r="5" fill="#ece9e2" />
+            </g>
+            <circle cx="100" cy="100" r="9" fill="#f2c14e" opacity="0.5" filter="url(#orbit-glow)" className="breathe" />
+            <circle cx="100" cy="100" r="3.5" fill="#f6d488" />
+        </svg>
+    )
+}
+
+// The logo's paper-cup telephone, drawn in and gently swaying
+function CupsLine() {
+    return (
+        <svg viewBox="0 0 32 32" className="mx-auto h-24 w-24 sway" aria-hidden="true">
+            <defs>
+                <filter id="cups-glow" x="-100%" y="-100%" width="300%" height="300%">
+                    <feGaussianBlur stdDeviation="1.4" />
+                </filter>
+            </defs>
+            <g fill="none" stroke="#ece9e2" strokeWidth="0.9" strokeLinecap="round" strokeLinejoin="round">
+                <path className="draw" style={{ ['--len' as string]: 60 }} d="M14.2 8 H10.8 C 7.4 8, 6.6 12, 9 13.6 L 23 18.4 C 25.4 20, 24.6 24, 21.2 24 H17.8" />
+                <path d="M14.2 6 L23.2 4.3 M14.2 10 L23.2 11.7" />
+                <ellipse cx="23.2" cy="8" rx="1.3" ry="3.7" fill="#0e0e10" />
+                <ellipse cx="14.2" cy="8" rx="0.6" ry="2" />
+                <path d="M17.8 22 L8.8 20.3 M17.8 26 L8.8 27.7" />
+                <ellipse cx="8.8" cy="24" rx="1.3" ry="3.7" fill="#0e0e10" />
+                <ellipse cx="17.8" cy="24" rx="0.6" ry="2" />
+            </g>
+            <circle cx="16" cy="16" r="2" fill="#f2c14e" filter="url(#cups-glow)" className="breathe" />
+            <circle cx="16" cy="16" r="0.9" fill="#f6d488" />
+        </svg>
     )
 }
 
@@ -2025,7 +2139,7 @@ function RematchQuestion({ answer, onAnswer }: { answer: 'yes' | 'no' | null; on
         )
     }
     return (
-        <div className="inline-flex flex-col sm:flex-row items-center gap-3 rounded-full border border-paper/10 bg-ink-850/80 py-2 pl-5 pr-2 animate-fade-in">
+        <div className="inline-flex flex-col sm:flex-row items-center gap-3 rounded-3xl sm:rounded-full border border-paper/10 bg-ink-850/80 px-5 py-4 sm:py-2 sm:pl-5 sm:pr-2 animate-fade-in">
             <span className="text-sm text-paper-dim">Okay to meet this person again someday?</span>
             <span className="flex gap-1.5">
                 <button onClick={() => onAnswer('yes')} className="rounded-full border border-paper/15 px-4 py-1.5 text-sm hover:border-paper/40 hover:bg-paper/5">Sure</button>

@@ -25,12 +25,50 @@ body {
 /* Video aspect ratio - Mobile: tall portrait that still leaves room for chat, Desktop: landscape */
 .video-container {
   aspect-ratio: 4/5;
+  --pip-w: 92px;
+  --pip-h: 124px;
 }
 
 @media (min-width: 768px) {
   .video-container {
     aspect-ratio: 16/9;
+    --pip-w: 200px;
+    --pip-h: 120px;
   }
+}
+
+/* Dock floats up once the call starts */
+.dock-in {
+  animation: rise 0.7s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  animation-delay: 0.15s;
+}
+
+/* Searching: two dots orbit in opposite directions, slow and calm */
+.orbit-a, .orbit-b, .spin-slow {
+  transform-origin: 100px 100px;
+}
+
+.orbit-a { animation: orbit 7s cubic-bezier(0.45, 0, 0.55, 1) infinite; }
+.orbit-b { animation: orbit-rev 7s cubic-bezier(0.45, 0, 0.55, 1) infinite; }
+.spin-slow { animation: orbit 30s linear infinite; }
+
+@keyframes orbit {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes orbit-rev {
+  to { transform: rotate(-360deg); }
+}
+
+/* End screen: the paper-cup line drawing sways like a string in the wind */
+.sway {
+  transform-origin: 50% 50%;
+  animation: sway 6s ease-in-out infinite;
+}
+
+@keyframes sway {
+  0%, 100% { transform: rotate(-3deg); }
+  50% { transform: rotate(3deg); }
 }
 
 /* Faint drafting-paper grid behind the page */
@@ -214,7 +252,7 @@ input[type="range"]::-moz-range-thumb {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .draw, .rise, .breathe, .signal, .ring {
+  .draw, .rise, .breathe, .signal, .ring, .orbit-a, .orbit-b, .spin-slow, .sway, .dock-in {
     animation: none !important;
     stroke-dashoffset: 0 !important;
     opacity: 1 !important;
