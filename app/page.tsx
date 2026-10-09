@@ -110,6 +110,7 @@ export default function Home() {
     const [lastPeer, setLastPeer] = useState<string | null>(null)
     const [rematchAnswer, setRematchAnswer] = useState<'yes' | 'no' | null>(null)
     const [strangerTyping, setStrangerTyping] = useState(false)
+    const [showSafety, setShowSafety] = useState(false)
 
     // Privacy filters run on this device before video is sent, so the raw face never leaves it
     const [videoFilter, setVideoFilter] = useState<VideoFilter>('none')
@@ -1796,6 +1797,7 @@ export default function Home() {
 
     useEffect(() => {
         if (!isMatched) {
+            setShowSafety(false)
             setOpenPanel('none')
             setShowEmojiPicker(false)
             setFloaters([])
@@ -2446,21 +2448,38 @@ export default function Home() {
                     <aside className="call-chat flex flex-col overflow-hidden rounded-3xl border border-paper/10 bg-gradient-to-b from-ink-850 to-ink-900 min-h-[360px]">
                         <div className="flex items-end justify-between gap-3 px-5 pt-4 pb-3">
                             <h2 className="font-serif text-2xl leading-none">Chat</h2>
-                            <p className={`flex items-center gap-1.5 whitespace-nowrap font-mono text-[10.5px] ${chatReady ? 'text-emerald-300/90' : 'text-paper-faint'}`}>
+                            <button
+                                onClick={() => setShowSafety(!showSafety)}
+                                aria-expanded={showSafety}
+                                aria-label="Encryption details and safety code"
+                                className={`flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 py-1 font-mono text-[10.5px] transition ${
+                                    chatReady ? 'border-emerald-300/25 text-emerald-300/90 hover:border-emerald-300/50' : 'border-paper/10 text-paper-faint'
+                                } ${showSafety ? 'bg-emerald-300/10' : ''}`}
+                            >
                                 <Icon name="lock" small />
-                                {chatReady ? 'end-to-end encrypted' : 'securing…'}
-                            </p>
+                                {chatReady ? 'encrypted' : 'securing…'}
+                                <span className="text-paper-faint">ⓘ</span>
+                            </button>
                         </div>
-                        <div
-                            className="mx-3 flex items-center justify-between gap-3 rounded-2xl border border-paper/10 bg-ink-950/50 px-3.5 py-2.5"
-                            title="Read this aloud together. If both codes match, nobody is listening in between."
-                        >
-                            <div className="min-w-0">
-                                <p className="font-mono text-[9.5px] uppercase tracking-[0.18em] text-paper-faint">Safety code</p>
-                                <p className="mt-0.5 text-[11.5px] leading-snug text-paper-mute">Read it aloud. Same code, private line.</p>
+                        {showSafety && (
+                            <div className="mx-3 rounded-2xl border border-paper/10 bg-ink-950/60 p-4 animate-fade-in">
+                                <div className="flex items-start justify-between gap-3">
+                                    <div>
+                                        <p className="font-mono text-[9.5px] uppercase tracking-[0.18em] text-paper-faint">Safety code</p>
+                                        <p className="mt-1 font-mono text-2xl tracking-[0.18em] text-glow-soft">{safetyCode ?? '··· ···'}</p>
+                                    </div>
+                                    <button onClick={() => setShowSafety(false)} className="text-paper-faint hover:text-paper text-lg leading-none" aria-label="Close">
+                                        ×
+                                    </button>
+                                </div>
+                                <p className="mt-3 text-[12.5px] leading-relaxed text-paper-mute">
+                                    Your video, voice and chat are end-to-end encrypted: only you and this person can see them, not us.
+                                </p>
+                                <p className="mt-2 text-[12.5px] leading-relaxed text-paper-mute">
+                                    Want proof? Read this code aloud together. If both screens show the same digits, nobody is secretly in the middle of your call.
+                                </p>
                             </div>
-                            <p className="shrink-0 whitespace-nowrap font-mono text-[15px] tracking-[0.16em] text-glow-soft">{safetyCode ?? '··· ···'}</p>
-                        </div>
+                        )}
 
                         <div className="flex-1 overflow-y-auto scrollbar-thin px-4 py-4 space-y-1.5 max-h-[300px] lg:max-h-none" aria-live="polite">
                             {messages.length === 0 && (
