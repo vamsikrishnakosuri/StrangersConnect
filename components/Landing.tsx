@@ -2,7 +2,7 @@
 
 import { FAQ } from '@/lib/site'
 import { LineIcon } from './Illustrations'
-import { MessageJourney, PrivacyDiagramV2, PrivacyIcon } from './PrivacyVisual'
+import { MessageJourney, PrivacyDiagramV2 } from './PrivacyVisual'
 import { GlobeHero } from './GlobeHero'
 import { NoiseField } from './NoiseField'
 import ScrollScenes from './ScrollScenes'
@@ -134,48 +134,59 @@ export default function Landing({ onStart, isConnected }: Props) {
             </section>
 
             {/* Privacy */}
-            <section id="privacy" data-scene="privacy" className="relative overflow-hidden border-y border-paper/10 bg-ink-850/60 scroll-mt-24">
-                <div className="relative mx-auto max-w-page px-4 sm:px-6 py-24 sm:py-32 grid lg:grid-cols-[0.95fr_1.2fr] gap-12 lg:gap-14 items-center">
-                    <div>
-                        <Eyebrow>Private by design</Eyebrow>
-                        <h2 className="mt-4 font-serif text-4xl sm:text-5xl leading-[1.05] tracking-[-0.01em]">
-                            Only the two of you <em className="text-glow-soft">can see the call.</em>
-                        </h2>
-                        <p className="mt-6 text-[17px] leading-relaxed text-paper-dim max-w-lg">
-                            Our server simply introduces you to someone new, then steps out of the way. Your video, voice and
-                            words travel locked between the two of you.
-                        </p>
-                        <ul className="mt-8 grid gap-3 sm:grid-cols-2">
-                            {([
-                                ['lock', 'Locked calls', 'Video and voice are locked on your device. Only the other person can open them.', '#7cb4ff'],
-                                ['chat', 'Private chat', 'A fresh lock for every chat. We only ever see scrambled text.', '#67e8f9'],
-                                ['code', 'Safety code', 'Read six digits aloud together. Same code means nobody is in between.', '#5eead4'],
-                                ['trash', 'Nothing saved', 'No recordings, no chat history. Close the tab and it is gone.', '#a78bfa'],
-                                ['mask', 'No identity', 'No account, email or profile. Start blurred until you choose.', '#7cb4ff'],
-                                ['shield', 'Safe community', 'One-tap reporting, unclickable links and automatic bans.', '#5eead4'],
-                            ] as const).map(([icon, t, d]) => (
-                                <li
-                                    key={t}
-                                    data-anim="bullet"
-                                    className="group rounded-2xl border border-paper/10 bg-ink-900/60 p-4 backdrop-blur-sm transition hover:-translate-y-0.5 hover:border-paper/20"
-                                >
-                                    <div className="flex items-center gap-2.5">
-                                        <span className="grid h-8 w-8 place-items-center rounded-xl border border-paper/10 bg-ink-850 text-paper-dim">
-                                            <PrivacyIcon name={icon} />
-                                        </span>
-                                        <span className="text-[14.5px] font-medium text-paper">{t}</span>
-                                    </div>
-                                    <p className="mt-2 text-[13px] leading-relaxed text-paper-mute">{d}</p>
-                                </li>
-                            ))}
-                        </ul>
-                    </div>
-                    <div data-anim="diagram" className="relative rounded-3xl border border-paper/10 bg-ink-900 p-4 sm:p-6">
-                        <PrivacyDiagramV2 />
-                        <div className="mt-3 border-t border-paper/10 pt-4">
-                            <p className="mb-3 font-mono text-[10.5px] uppercase tracking-[0.2em] text-paper-faint">What we see of your chat</p>
-                            <MessageJourney />
+            <section id="privacy" data-scene="privacy" className="relative border-y border-paper/10 bg-ink-850/60 scroll-mt-24">
+                <div className="relative mx-auto max-w-page px-4 sm:px-6 py-24 sm:py-32">
+                    <div className="grid lg:grid-cols-[0.9fr_1.25fr] gap-12 lg:gap-16 items-center">
+                        <div>
+                            <Eyebrow>Private by design</Eyebrow>
+                            <h2 className="mt-4 font-serif text-4xl sm:text-5xl leading-[1.05] tracking-[-0.01em]">
+                                Only the two of you <em className="text-glow-soft">can see the call.</em>
+                            </h2>
+                            <p className="mt-6 text-[17px] leading-relaxed text-paper-dim max-w-md">
+                                Our server simply introduces you to someone new, then steps out of the way. Your video, voice
+                                and words travel locked between the two of you.
+                            </p>
+                            <p className="mt-6 max-w-md border-l border-paper/15 pl-4 text-[14px] leading-relaxed text-paper-mute">
+                                Want proof? Both of you see the same six-digit safety code. Read it aloud: if it matches,
+                                nobody is in between.
+                            </p>
                         </div>
+
+                        {/* The diagram sits on the same flowing gradient as the hero */}
+                        <div data-anim="diagram" className="relative overflow-hidden rounded-[28px] border border-paper/10">
+                            <div className="absolute inset-0" aria-hidden="true">
+                                <NoiseField />
+                                <div className="absolute inset-0 bg-ink-950/55" />
+                            </div>
+                            <div className="relative p-4 sm:p-6">
+                                <PrivacyDiagramV2 />
+                                <div className="mt-3 border-t border-paper/10 pt-4">
+                                    <p className="mb-3 font-mono text-[10.5px] uppercase tracking-[0.2em] text-paper-faint">What we see of your chat</p>
+                                    <MessageJourney />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Four promises, editorial and quiet */}
+                    <div data-scene="pillars" className="mt-20">
+                    <ol className="grid gap-y-10 sm:grid-cols-2 lg:grid-cols-4 border-t border-paper/10">
+                        {[
+                            ['Locked', 'Video, voice and chat are locked on your device. Only the other person can open them.'],
+                            ['Unsaved', 'No recordings and no chat history. Close the tab and it is gone.'],
+                            ['Anonymous', 'No account, email or profile. You start blurred until you choose.'],
+                            ['Protected', 'Links from strangers cannot be clicked, reporting takes one tap, repeat offenders are banned.'],
+                        ].map(([t, d], i) => (
+                            <li key={t} data-anim="pillar" className={`group relative pt-8 lg:pr-8 ${i > 0 ? 'lg:pl-8 lg:border-l border-paper/10' : ''}`}>
+                                {/* soft card that appears while this promise is in focus */}
+                                <span data-anim="pillar-card" className="pointer-events-none absolute -inset-x-3 -bottom-4 top-3 rounded-2xl border border-paper/10 bg-ink-900/90 opacity-0 shadow-[0_30px_80px_-30px_rgba(103,232,249,0.35)]" aria-hidden="true" />
+                                <span className="absolute left-0 top-0 h-px w-0 bg-gradient-to-r from-[#67e8f9] to-transparent transition-all duration-500 group-hover:w-full lg:left-auto" aria-hidden="true" />
+                                <span className="relative font-mono text-[11px] text-paper-faint">0{i + 1}</span>
+                                <h3 className="relative mt-3 font-serif text-3xl tracking-[-0.01em] text-paper">{t}</h3>
+                                <p className="relative mt-3 text-[14.5px] leading-relaxed text-paper-mute">{d}</p>
+                            </li>
+                        ))}
+                    </ol>
                     </div>
                 </div>
             </section>

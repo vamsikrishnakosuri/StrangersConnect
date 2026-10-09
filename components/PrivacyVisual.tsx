@@ -7,8 +7,8 @@ import type React from 'react'
 // can only introduce them, and a live demo of a message scrambling in transit.
 
 const INK = '#ece9e2'
-const BLUE = '#7cb4ff'
-const TEAL = '#5eead4'
+const BLUE = '#f6d488' // you: the page's warm accent
+const TEAL = '#67e8f9' // them: cyan
 const CYAN = '#67e8f9'
 
 const PATH = 'M150 232 C 250 272, 390 272, 490 232'
@@ -172,9 +172,9 @@ export function MessageJourney() {
 
     return (
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto_1fr_auto_1fr] sm:items-center">
-            <div className="rounded-2xl border border-[#7cb4ff]/30 bg-[#7cb4ff]/[0.06] px-3.5 py-2.5">
-                <p className="font-mono text-[9.5px] uppercase tracking-[0.18em] text-[#7cb4ff]/80">You type</p>
-                <p className="mt-1 min-h-[1.25rem] text-[13px] text-paper">
+            <div className="rounded-2xl border border-[#f6d488]/30 bg-[#f6d488]/[0.05] px-3.5 py-2.5">
+                <p className="font-mono text-[9.5px] uppercase tracking-[0.18em] text-[#f6d488]/80">You type</p>
+                <p className="mt-1 h-[2.5rem] overflow-hidden text-[13px] leading-[1.25rem] text-paper">
                     {typed}
                     <span className="ml-0.5 inline-block h-3.5 w-px translate-y-0.5 animate-pulse bg-paper/70" />
                 </p>
@@ -182,12 +182,12 @@ export function MessageJourney() {
             <span className="hidden text-paper-faint sm:block" aria-hidden="true">→</span>
             <div className="rounded-2xl border border-paper/10 bg-ink-950/60 px-3.5 py-2.5">
                 <p className="font-mono text-[9.5px] uppercase tracking-[0.18em] text-paper-faint">On the way</p>
-                <p className="mt-1 min-h-[1.25rem] truncate font-mono text-[12.5px] text-[#67e8f9]/80">{noise}</p>
+                <p className="mt-1 h-[2.5rem] overflow-hidden break-all font-mono text-[12.5px] leading-[1.25rem] text-[#67e8f9]/80">{noise}</p>
             </div>
             <span className="hidden text-paper-faint sm:block" aria-hidden="true">→</span>
-            <div className="rounded-2xl border border-[#5eead4]/30 bg-[#5eead4]/[0.06] px-3.5 py-2.5">
-                <p className="font-mono text-[9.5px] uppercase tracking-[0.18em] text-[#5eead4]/80">They read</p>
-                <p className={`mt-1 min-h-[1.25rem] text-[13px] text-paper transition-opacity duration-500 ${delivered ? 'opacity-100' : 'opacity-0'}`}>
+            <div className="rounded-2xl border border-[#67e8f9]/30 bg-[#67e8f9]/[0.05] px-3.5 py-2.5">
+                <p className="font-mono text-[9.5px] uppercase tracking-[0.18em] text-[#67e8f9]/80">They read</p>
+                <p className={`mt-1 h-[2.5rem] overflow-hidden text-[13px] leading-[1.25rem] text-paper transition-opacity duration-500 ${delivered ? 'opacity-100' : 'opacity-0'}`}>
                     {PHRASES[phrase]}
                 </p>
             </div>

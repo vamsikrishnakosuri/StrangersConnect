@@ -22,7 +22,7 @@ export default function ScrollScenes() {
             gsap.registerPlugin(ScrollTrigger)
             document.documentElement.classList.add('js-scroll')
 
-            const lenis = new Lenis({ duration: 1.15, smoothWheel: true, anchors: { offset: -80 } })
+            const lenis = new Lenis({ duration: 0.9, smoothWheel: true, anchors: { offset: -80 } })
             lenis.on('scroll', ScrollTrigger.update)
             const tick = (time: number) => lenis.raf(time * 1000)
             gsap.ticker.add(tick)
@@ -35,7 +35,7 @@ export default function ScrollScenes() {
                 mm.add('(min-width: 768px)', () => {
                     const tl = gsap.timeline({
                         defaults: { ease: 'none' },
-                        scrollTrigger: { trigger: '[data-scene="hero"]', start: 'top top', end: '+=120%', scrub: 0.8, pin: true },
+                        scrollTrigger: { trigger: '[data-scene="hero"]', start: 'top top', end: '+=85%', scrub: 0.8, pin: true, anticipatePin: 1 },
                     })
                     // 1. Text drifts away while the scene zooms toward you
                     tl.to('[data-anim="hero-text"]', { y: -90, opacity: 0, duration: 0.35 }, 0)
@@ -68,7 +68,7 @@ export default function ScrollScenes() {
                     color: '#ece9e2',
                     stagger: 0.12,
                     ease: 'none',
-                    scrollTrigger: { trigger: '[data-scene="statement"]', start: 'top top', end: '+=110%', scrub: 0.6, pin: true },
+                    scrollTrigger: { trigger: '[data-scene="statement"]', start: 'top top', end: '+=75%', scrub: 0.6, pin: true, anticipatePin: 1 },
                 })
 
                 // How it works: a glowing line sweeps across, then each step rises
@@ -94,6 +94,47 @@ export default function ScrollScenes() {
                     ease: 'none',
                     scrollTrigger: { trigger: '[data-scene="privacy"]', start: 'top 85%', end: 'center 60%', scrub: 0.8 },
                 })
+                // Privacy promises: on wide screens each one in turn zooms to the centre,
+                // sits on a soft card, then settles back into its place in the row
+                mm.add('(min-width: 1024px)', () => {
+                    const items = gsap.utils.toArray<HTMLElement>('[data-anim="pillar"]')
+                    const row = document.querySelector<HTMLElement>('[data-scene="pillars"]')
+                    if (!row || !items.length) return
+                    const tl = gsap.timeline({
+                        defaults: { ease: 'power2.inOut' },
+                        scrollTrigger: {
+                            trigger: row,
+                            start: 'center 55%',
+                            end: '+=' + items.length * 38 + '%',
+                            scrub: 0.7,
+                            pin: true,
+                            anticipatePin: 1,
+                            invalidateOnRefresh: true,
+                        },
+                    })
+                    items.forEach((el, i) => {
+                        const card = el.querySelector('[data-anim="pillar-card"]')
+                        const others = items.filter((o) => o !== el)
+                        const toCentre = () => {
+                            const r = el.getBoundingClientRect()
+                            const rr = row.getBoundingClientRect()
+                            return rr.left + rr.width / 2 - (r.left + r.width / 2)
+                        }
+                        tl.to(el, { x: toCentre, y: -30, scale: 1.45, zIndex: 5, duration: 1 }, i * 2)
+                            .to(card, { opacity: 1, duration: 0.6 }, i * 2 + 0.2)
+                            .to(others, { opacity: 0.18, duration: 0.6 }, i * 2)
+                            .to(el, { x: 0, y: 0, scale: 1, duration: 1 }, i * 2 + 1.3)
+                            .to(card, { opacity: 0, duration: 0.5 }, i * 2 + 1.3)
+                            .to(others, { opacity: 1, duration: 0.6 }, i * 2 + 1.4)
+                            .set(el, { zIndex: 0 }, i * 2 + 2.3)
+                    })
+                })
+                mm.add('(max-width: 1023px)', () => {
+                    gsap.utils.toArray<HTMLElement>('[data-anim="pillar"]').forEach((el) => {
+                        gsap.from(el, { y: 30, opacity: 0, duration: 0.8, ease: 'power3.out', scrollTrigger: { trigger: el, start: 'top 88%' } })
+                    })
+                })
+
                 // Privacy tiles fade in as they enter the screen (simple and robust)
                 const tiles = gsap.utils.toArray<HTMLElement>('[data-anim="bullet"]')
                 tiles.forEach((el, i) => {
@@ -126,7 +167,7 @@ export default function ScrollScenes() {
                         return { x: cx - (r.left + r.width / 2), y: cy - (r.top + r.height / 2) }
                     })
                     const tl = gsap.timeline({
-                        scrollTrigger: { trigger: '[data-scene="features"]', start: 'top top', end: '+=140%', scrub: 0.9, pin: true },
+                        scrollTrigger: { trigger: '[data-scene="features"]', start: 'top top', end: '+=95%', scrub: 0.9, pin: true, anticipatePin: 1 },
                     })
                     // Deal from the top of the stack (the last card) downward
                     cards
@@ -164,12 +205,27 @@ export default function ScrollScenes() {
                 })
             })
 
-            // Fonts and images can shift layout after load
-            const refresh = () => ScrollTrigger.refresh()
+            // Fonts, images and live content can shift layout: keep scroll positions in sync
+            let refreshTimer: ReturnType<typeof setTimeout> | null = null
+            const refresh = () => {
+                if (refreshTimer) clearTimeout(refreshTimer)
+                refreshTimer = setTimeout(() => ScrollTrigger.refresh(), 150)
+            }
+            let lastHeight = document.body.scrollHeight
+            const heightWatch = new ResizeObserver(() => {
+                const h = document.body.scrollHeight
+                if (Math.abs(h - lastHeight) > 2) {
+                    lastHeight = h
+                    refresh()
+                }
+            })
+            heightWatch.observe(document.body)
             window.addEventListener('load', refresh)
             document.fonts?.ready.then(refresh)
 
             cleanup = () => {
+                heightWatch.disconnect()
+                if (refreshTimer) clearTimeout(refreshTimer)
                 window.removeEventListener('load', refresh)
                 ctx.revert()
                 gsap.ticker.remove(tick)
