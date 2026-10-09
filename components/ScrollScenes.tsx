@@ -49,9 +49,8 @@ export default function ScrollScenes() {
                         .fromTo('[data-anim="bubble-a"]', { scale: 1, rotation: 0 }, { scale: 1.3, rotation: -6, duration: 0.2, ease: 'back.out(2)' }, 0.3)
                         .to('[data-anim="frame-b"]', { opacity: 1, duration: 0.2 }, 0.5)
                         .fromTo('[data-anim="bubble-b"]', { scale: 1, rotation: 0 }, { scale: 1.3, rotation: 6, duration: 0.2, ease: 'back.out(2)' }, 0.5)
-                        // 4. The connection flares and sparks burst where they meet
-                        .to('[data-anim="link"]', { attr: { 'stroke-width': 4 }, strokeOpacity: 1, duration: 0.2 }, 0.65)
-                        .fromTo('[data-anim="burst"]', { scale: 0.3, opacity: 0, rotation: -20 }, { scale: 1.15, opacity: 1, rotation: 0, duration: 0.3, ease: 'back.out(1.6)' }, 0.7)
+                        // 4. The connection between them flares
+                        .to('[data-anim="link"]', { attr: { 'stroke-width': 4 }, strokeOpacity: 1, duration: 0.3 }, 0.65)
                 })
                 mm.add('(max-width: 767px)', () => {
                     gsap.to('[data-anim="hero-art"]', {

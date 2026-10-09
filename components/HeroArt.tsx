@@ -120,27 +120,6 @@ export function HeroArt() {
                 </animateMotion>
             </circle>
 
-            {/* spark burst where they meet (scroll driven) */}
-            <g data-anim="burst" opacity="0" style={{ transformBox: 'fill-box', transformOrigin: 'center' }}>
-                {Array.from({ length: 12 }, (_, k) => {
-                    const a = (k / 12) * Math.PI * 2
-                    const r2 = k % 2 ? 58 : 76
-                    return (
-                        <path
-                            key={k}
-                            d={`M${(289 + Math.cos(a) * 30).toFixed(1)} ${(300 + Math.sin(a) * 30).toFixed(1)} L ${(289 + Math.cos(a) * r2).toFixed(1)} ${(300 + Math.sin(a) * r2).toFixed(1)}`}
-                            stroke={k % 2 ? PINK : BLUE}
-                            strokeWidth="2.2"
-                            strokeLinecap="round"
-                        />
-                    )
-                })}
-                {Array.from({ length: 8 }, (_, k) => {
-                    const a = (k / 8) * Math.PI * 2 + 0.3
-                    return <circle key={`s${k}`} cx={(289 + Math.cos(a) * 94).toFixed(1)} cy={(300 + Math.sin(a) * 94).toFixed(1)} r={k % 3 ? 2.5 : 4} fill={k % 2 ? BLUE : PINK} />
-                })}
-            </g>
-
             {/* privacy lock on the line */}
             <g transform="translate(276 286)" fill="#0e0e10" stroke={INK} strokeWidth="1.4" strokeLinecap="round">
                 <rect x="0" y="10" width="26" height="20" rx="4" />
@@ -148,11 +127,6 @@ export function HeroArt() {
                 <circle cx="13" cy="20" r="2" fill={PINK} stroke="none" />
             </g>
 
-            {/* a friendly spark once they have said hi */}
-            <g className="pop" style={{ ['--delay' as string]: '3.4s', transformOrigin: 'center' }}>
-                <path className="heart-beat" d="M289 238 C 291 250, 295 254, 307 256 C 295 258, 291 262, 289 274 C 287 262, 283 258, 271 256 C 283 254, 287 250, 289 238 Z" fill="url(#hero-heart)" filter="url(#hero-glow)" />
-                <path className="heart-beat" d="M312 236 C 313 241, 315 243, 320 244 C 315 245, 313 247, 312 252 C 311 247, 309 245, 304 244 C 309 243, 311 241, 312 236 Z" fill={BLUE} />
-            </g>
         </svg>
     )
 }
