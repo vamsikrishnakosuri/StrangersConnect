@@ -430,3 +430,19 @@ html.lenis, html.lenis body {
     transform: none !important;
   }
 }
+
+/* Filter picker: fading edges and a gradient ring on the selected item */
+.picker-rail {
+  mask-image: linear-gradient(to right, transparent 0, #000 22px, #000 calc(100% - 22px), transparent 100%);
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 22px, #000 calc(100% - 22px), transparent 100%);
+  scroll-padding-inline: 22px;
+}
+
+.picker-ring {
+  background: rgba(236, 233, 226, 0.12);
+}
+
+.picker-ring.is-active {
+  background: conic-gradient(from 200deg, #7cb4ff, #ff8fc8, #f2c14e, #7cb4ff);
+  box-shadow: 0 0 22px rgba(255, 143, 200, 0.28);
+}

@@ -11,27 +11,40 @@ import { drawFaceFx, loadFaceLandmarker, type FaceFx } from '@/lib/faceFx'
 import type { FaceLandmarker, NormalizedLandmark } from '@mediapipe/tasks-vision'
 import type { FaceRenderer, WarpName } from '@/lib/faceRender'
 import type { PaintName } from '@/lib/faceTextures'
+import { loadSegmenter, paintScene, sceneThumb, type BackgroundName } from '@/lib/backgrounds'
+import type { ImageSegmenter } from '@mediapipe/tasks-vision'
 
 type PropName = 'bunny' | 'kitty' | 'shades'
 type VideoFilter = 'none' | PaintName | WarpName | PropName | 'blur' | 'pixel'
 
-type FilterDef = { label: string; css: string; face?: boolean; paint?: PaintName; warp?: WarpName; prop?: PropName; group: 'off' | 'fun' | 'privacy' }
+type FilterDef = { label: string; thumb: string; css: string; face?: boolean; paint?: PaintName; warp?: WarpName; prop?: PropName; group: 'off' | 'face' | 'privacy' }
 
 const FILTERS: Record<VideoFilter, FilterDef> = {
-    none: { label: 'Off', css: 'none', group: 'off' },
-    neon: { label: 'Neon', css: 'none', face: true, paint: 'neon', group: 'fun' },
-    bigeyes: { label: 'Big eyes', css: 'none', face: true, warp: 'bigeyes', group: 'fun' },
-    alien: { label: 'Alien', css: 'none', face: true, warp: 'alien', group: 'fun' },
-    tiger: { label: 'Tiger', css: 'none', face: true, paint: 'tiger', group: 'fun' },
-    glam: { label: 'Glam', css: 'none', face: true, paint: 'glam', group: 'fun' },
-    skull: { label: 'Skull', css: 'none', face: true, paint: 'skull', group: 'fun' },
-    bunny: { label: 'Bunny', css: 'none', face: true, prop: 'bunny', group: 'fun' },
-    kitty: { label: 'Kitty', css: 'none', face: true, prop: 'kitty', group: 'fun' },
-    shades: { label: 'Shades', css: 'none', face: true, prop: 'shades', group: 'fun' },
-    bignose: { label: 'Big nose', css: 'none', face: true, warp: 'bignose', group: 'fun' },
-    blur: { label: 'Blur', css: 'blur(16px)', group: 'privacy' },
-    pixel: { label: 'Pixelate', css: 'none', group: 'privacy' },
+    none: { label: 'Off', thumb: '', css: 'none', group: 'off' },
+    bunny: { label: 'Bunny', thumb: '🐰', css: 'none', face: true, prop: 'bunny', group: 'face' },
+    bigeyes: { label: 'Big eyes', thumb: '👀', css: 'none', face: true, warp: 'bigeyes', group: 'face' },
+    neon: { label: 'Neon', thumb: '💠', css: 'none', face: true, paint: 'neon', group: 'face' },
+    alien: { label: 'Alien', thumb: '👽', css: 'none', face: true, warp: 'alien', group: 'face' },
+    kitty: { label: 'Kitty', thumb: '🐱', css: 'none', face: true, prop: 'kitty', group: 'face' },
+    tiger: { label: 'Tiger', thumb: '🐯', css: 'none', face: true, paint: 'tiger', group: 'face' },
+    shades: { label: 'Shades', thumb: '😎', css: 'none', face: true, prop: 'shades', group: 'face' },
+    glam: { label: 'Glam', thumb: '💄', css: 'none', face: true, paint: 'glam', group: 'face' },
+    skull: { label: 'Skull', thumb: '💀', css: 'none', face: true, paint: 'skull', group: 'face' },
+    bignose: { label: 'Big nose', thumb: '👃', css: 'none', face: true, warp: 'bignose', group: 'face' },
+    blur: { label: 'Blur me', thumb: '🌫️', css: 'blur(16px)', group: 'privacy' },
+    pixel: { label: 'Pixelate', thumb: '🧊', css: 'none', group: 'privacy' },
 }
+
+const BACKGROUNDS: { id: BackgroundName; label: string }[] = [
+    { id: 'none', label: 'Off' },
+    { id: 'blur', label: 'Blur room' },
+    { id: 'aurora', label: 'Aurora' },
+    { id: 'sunset', label: 'Sunset' },
+    { id: 'night', label: 'Night' },
+    { id: 'studio', label: 'Studio' },
+    { id: 'paper', label: 'Grid' },
+    { id: 'custom', label: 'Your photo' },
+]
 
 // Older Safari has no canvas filters; there, Blur falls back to a heavy mosaic
 const CANVAS_FILTERS = (() => {
@@ -101,11 +114,17 @@ export default function Home() {
     // Privacy filters run on this device before video is sent, so the raw face never leaves it
     const [videoFilter, setVideoFilter] = useState<VideoFilter>('none')
     const filterRef = useRef<VideoFilter>('none')
-    const filterPipeRef = useRef<{ timer: ReturnType<typeof setInterval>; track: MediaStreamTrack; video: HTMLVideoElement; renderer: FaceRenderer | null } | null>(null)
+    const filterPipeRef = useRef<{ timer: ReturnType<typeof setInterval>; track: MediaStreamTrack; video: HTMLVideoElement; renderer: FaceRenderer | null; rendererSrc?: HTMLCanvasElement } | null>(null)
     const [localPreview, setLocalPreview] = useState<MediaStream | null>(null)
     const faceLmRef = useRef<FaceLandmarker | null>(null)
     const faceRenderModRef = useRef<typeof import('@/lib/faceRender') | null>(null)
     const [faceLoading, setFaceLoading] = useState(false)
+    const [background, setBackground] = useState<BackgroundName>('none')
+    const bgRef = useRef<BackgroundName>('none')
+    const segmenterRef = useRef<ImageSegmenter | null>(null)
+    const customBgRef = useRef<HTMLImageElement | null>(null)
+    const [filterTab, setFilterTab] = useState<'face' | 'background' | 'privacy'>('face')
+    const bgInputRef = useRef<HTMLInputElement | null>(null)
     const [openPanel, setOpenPanel] = useState<'none' | 'volume' | 'filters' | 'react'>('none')
     const [floaters, setFloaters] = useState<{ id: string; e: string; x: number; mine: boolean }[]>([])
     const [showEmojiPicker, setShowEmojiPicker] = useState(false)
@@ -808,8 +827,9 @@ export default function Home() {
             localStreamRef.current = stream
             const rawVideo = stream.getVideoTracks()[0]
             let outVideo = rawVideo
-            if (rawVideo && filterRef.current !== 'none') {
+            if (rawVideo && (filterRef.current !== 'none' || bgRef.current !== 'none')) {
                 if (FILTERS[filterRef.current].face) await ensureFaceTracker()
+                if (bgRef.current !== 'none') await ensureSegmenter()
                 const built = buildFilteredTrack(rawVideo)
                 await settle(built.ready)
                 outVideo = built.track
@@ -905,23 +925,117 @@ export default function Home() {
             return true
         }
 
+        // Background compositing buffers
+        const comp = document.createElement('canvas')
+        const cctx = comp.getContext('2d')!
+        const person = document.createElement('canvas')
+        const pctx = person.getContext('2d')!
+        const maskCanvas = document.createElement('canvas')
+        const mctx = maskCanvas.getContext('2d')!
+        let maskData: ImageData | null = null
+        let sceneCache: { key: string; canvas: HTMLCanvasElement } | null = null
+
+        const backgroundFor = (bg: BackgroundName): CanvasImageSource | null => {
+            if (bg === 'custom') return customBgRef.current
+            if (bg === 'none' || bg === 'blur') return null
+            const key = `${bg}:${w}x${h}`
+            if (sceneCache?.key !== key) sceneCache = { key, canvas: paintScene(bg, w, h) }
+            return sceneCache.canvas
+        }
+
+        // Draws img to cover the whole canvas, like CSS object-fit: cover
+        const drawCover = (target: CanvasRenderingContext2D, img: CanvasImageSource) => {
+            const iw = (img as HTMLImageElement).naturalWidth || (img as HTMLCanvasElement).width
+            const ih = (img as HTMLImageElement).naturalHeight || (img as HTMLCanvasElement).height
+            const scale = Math.max(w / iw, h / ih)
+            const dw = iw * scale
+            const dh = ih * scale
+            target.drawImage(img, (w - dw) / 2, (h - dh) / 2, dw, dh)
+        }
+
+        // Replace or blur the room behind the person; result lands in comp
+        const composeBackground = (bg: BackgroundName) => {
+            const seg = segmenterRef.current
+            if (comp.width !== w || comp.height !== h) {
+                comp.width = person.width = w
+                comp.height = person.height = h
+            }
+            if (!seg) {
+                cctx.drawImage(frame, 0, 0)
+                return
+            }
+            try {
+                seg.segmentForVideo(frame, performance.now(), (result) => {
+                    const mask = result.confidenceMasks?.[0]
+                    if (!mask) return
+                    const mw = mask.width
+                    const mh = mask.height
+                    if (maskCanvas.width !== mw || maskCanvas.height !== mh || !maskData) {
+                        maskCanvas.width = mw
+                        maskCanvas.height = mh
+                        maskData = mctx.createImageData(mw, mh)
+                    }
+                    const conf = mask.getAsFloat32Array()
+                    const px = maskData.data
+                    for (let k = 0; k < conf.length; k++) {
+                        // Soft edge: ramp alpha between 0.35 and 0.75 confidence
+                        const a = Math.min(1, Math.max(0, (conf[k] - 0.35) / 0.4))
+                        px[k * 4 + 3] = a * 255
+                    }
+                    mctx.putImageData(maskData, 0, 0)
+                })
+            } catch {
+                // keep the previous mask for a dropped frame
+            }
+            // Background layer
+            const img = backgroundFor(bg)
+            if (bg === 'blur' || !img) {
+                cctx.filter = CANVAS_FILTERS ? 'blur(14px)' : 'none'
+                cctx.drawImage(frame, -20, -20, w + 40, h + 40)
+                cctx.filter = 'none'
+            } else {
+                drawCover(cctx, img)
+            }
+            // Person layer, cut out with the mask (scaled up smoothly for soft edges)
+            pctx.globalCompositeOperation = 'source-over'
+            pctx.clearRect(0, 0, w, h)
+            pctx.drawImage(frame, 0, 0)
+            pctx.globalCompositeOperation = 'destination-in'
+            pctx.imageSmoothingEnabled = true
+            pctx.drawImage(maskCanvas, 0, 0, w, h)
+            pctx.globalCompositeOperation = 'source-over'
+            cctx.drawImage(person, 0, 0)
+        }
+
         const draw = () => {
             if (video.readyState < 2 || !fitToVideo()) return
             const f = filterRef.current
+            const bg = bgRef.current
+            const def = FILTERS[f]
+
+            // 1. Clean camera frame (also what face tracking looks at)
+            fctx.drawImage(video, 0, 0, w, h)
+            // 2. Background replacement on top of it
+            let src: HTMLCanvasElement = frame
+            if (bg !== 'none') {
+                composeBackground(bg)
+                src = comp
+            }
+
+            // 3. Effect
             if (f === 'pixel' || (f === 'blur' && !CANVAS_FILTERS)) {
                 // Mosaic: shrink then stretch without smoothing. Works in every browser.
                 const block = f === 'pixel' ? 14 : 22
                 small.width = Math.max(1, Math.round(w / block))
                 small.height = Math.max(1, Math.round(h / block))
-                sctx.drawImage(video, 0, 0, small.width, small.height)
+                sctx.drawImage(src, 0, 0, small.width, small.height)
                 ctx.imageSmoothingEnabled = false
                 ctx.drawImage(small, 0, 0, w, h)
+                ctx.imageSmoothingEnabled = true
                 markReady()
                 return
             }
-            const def = FILTERS[f]
             if (def.face) {
-                fctx.drawImage(video, 0, 0, w, h)
                 const lmk = faceLmRef.current
                 if (lmk) {
                     try {
@@ -934,9 +1048,15 @@ export default function Home() {
                 // Keep the effect on through brief tracking blips
                 const lm = lastFace && performance.now() - lastFace.at < 400 ? lastFace.lm : null
                 const pipe = filterPipeRef.current
+                // The GPU renderer reads from a fixed canvas; rebuild it if the source changed
+                if (pipe?.renderer && pipe.rendererSrc !== src) {
+                    pipe.renderer.dispose()
+                    pipe.renderer = null
+                }
                 if ((def.paint || def.warp) && pipe && !pipe.renderer && faceRenderModRef.current) {
                     try {
-                        pipe.renderer = new faceRenderModRef.current.FaceRenderer(frame)
+                        pipe.renderer = new faceRenderModRef.current.FaceRenderer(src)
+                        pipe.rendererSrc = src
                     } catch (error) {
                         console.error('WebGL unavailable for face effects:', error)
                     }
@@ -944,14 +1064,14 @@ export default function Home() {
                 if ((def.paint || def.warp) && pipe?.renderer) {
                     ctx.drawImage(pipe.renderer.render(lm, { warp: def.warp, paint: def.paint }), 0, 0)
                 } else {
-                    ctx.drawImage(frame, 0, 0)
+                    ctx.drawImage(src, 0, 0)
                 }
-                if (def.prop && lm) drawFaceFx(ctx, frame, lm, def.prop as FaceFx, scratch)
+                if (def.prop && lm) drawFaceFx(ctx, src, lm, def.prop as FaceFx, scratch)
                 markReady()
                 return
             }
-            ctx.filter = CANVAS_FILTERS ? FILTERS[f].css : 'none'
-            ctx.drawImage(video, 0, 0, w, h)
+            ctx.filter = CANVAS_FILTERS ? def.css : 'none'
+            ctx.drawImage(src, 0, 0, w, h)
             ctx.filter = 'none'
             markReady()
         }
@@ -992,30 +1112,25 @@ export default function Home() {
         }
     }
 
-    const chooseFilter = async (f: VideoFilter) => {
-        if (FILTERS[f].face && !(await ensureFaceTracker())) f = 'none'
-        setVideoFilter(f)
-        filterRef.current = f
-        try {
-            localStorage.setItem('sc-filter', f)
-        } catch {
-            // ignore
-        }
+    // Applies the current effect + background to the outgoing video and the preview.
+    // The canvas pipeline only runs while something is switched on.
+    const applyVideoPipeline = async () => {
         const raw = localStreamRef.current?.getVideoTracks()[0]
         if (!raw) return
         const sender = peerConnectionRef.current?.getSenders().find((x) => x.track?.kind === 'video')
-        if (f === 'none') {
-            if (!filterPipeRef.current) return
+        const needed = filterRef.current !== 'none' || bgRef.current !== 'none'
+        const pipe = filterPipeRef.current
+        if (!needed) {
+            if (!pipe) return
             await sender?.replaceTrack(raw)
             setLocalPreview(new MediaStream([raw]))
             // Let the preview switch first, then tear the canvas down
             setTimeout(() => {
-                if (filterRef.current === 'none') stopFilterPipe()
+                if (filterRef.current === 'none' && bgRef.current === 'none') stopFilterPipe()
             }, 300)
             return
         }
-        // Already filtering: the draw loop reads filterRef, so the switch is instant
-        const pipe = filterPipeRef.current
+        // Already running: the draw loop reads the refs, so the switch is instant
         if (pipe) {
             if (sender && sender.track !== pipe.track) {
                 await sender.replaceTrack(pipe.track)
@@ -1026,9 +1141,63 @@ export default function Home() {
         // Build in the background and keep sending the camera until the first frame is ready
         const { track, ready } = buildFilteredTrack(raw)
         await settle(ready)
-        if (filterRef.current === 'none') return
+        if (filterRef.current === 'none' && bgRef.current === 'none') return
         await sender?.replaceTrack(track)
         setLocalPreview(new MediaStream([track]))
+    }
+
+    const chooseFilter = async (f: VideoFilter) => {
+        if (FILTERS[f].face && !(await ensureFaceTracker())) f = 'none'
+        setVideoFilter(f)
+        filterRef.current = f
+        try {
+            localStorage.setItem('sc-filter', f)
+        } catch {
+            // ignore
+        }
+        await applyVideoPipeline()
+    }
+
+    const ensureSegmenter = async () => {
+        if (segmenterRef.current) return true
+        setFaceLoading(true)
+        try {
+            segmenterRef.current = await loadSegmenter()
+            return true
+        } catch (error) {
+            console.error('Backgrounds unavailable:', error)
+            setNotice('Backgrounds are not supported on this device.')
+            return false
+        } finally {
+            setFaceLoading(false)
+        }
+    }
+
+    const chooseBackground = async (b: BackgroundName) => {
+        if (b === 'custom' && !customBgRef.current) {
+            bgInputRef.current?.click()
+            return
+        }
+        if (b !== 'none' && !(await ensureSegmenter())) b = 'none'
+        setBackground(b)
+        bgRef.current = b
+        try {
+            if (b !== 'custom') localStorage.setItem('sc-bg', b)
+        } catch {
+            // ignore
+        }
+        await applyVideoPipeline()
+    }
+
+    // A photo chosen from the device stays on the device
+    const onBackgroundFile = (file: File | undefined) => {
+        if (!file || !file.type.startsWith('image/')) return
+        const img = new Image()
+        img.onload = () => {
+            customBgRef.current = img
+            chooseBackground('custom')
+        }
+        img.src = URL.createObjectURL(file)
     }
 
     // Remember the filter between visits
@@ -1038,6 +1207,11 @@ export default function Home() {
             if (saved && saved in FILTERS) {
                 setVideoFilter(saved)
                 filterRef.current = saved
+            }
+            const savedBg = localStorage.getItem('sc-bg') as BackgroundName | null
+            if (savedBg && BACKGROUNDS.some((b) => b.id === savedBg) && savedBg !== 'custom') {
+                setBackground(savedBg)
+                bgRef.current = savedBg
             }
         } catch {
             // ignore
@@ -2099,9 +2273,9 @@ export default function Home() {
                                 ))}
                             </div>
                         )}
-                        {isMatched && videoFilter !== 'none' && (
+                        {isMatched && (videoFilter !== 'none' || background !== 'none') && (
                             <div className="pointer-events-none absolute left-3.5 top-12 z-30 rounded-full bg-black/45 backdrop-blur-md px-3 py-1 font-mono text-[10.5px] text-glow-soft animate-fade-in">
-                                {FILTERS[videoFilter].face ? FILTERS[videoFilter].label : `${FILTERS[videoFilter].label} privacy filter on`}
+                                {[videoFilter !== 'none' ? FILTERS[videoFilter].label : null, background !== 'none' ? BACKGROUNDS.find((b) => b.id === background)?.label : null].filter(Boolean).join(' · ')}
                             </div>
                         )}
                         {isMatched && !isLocalMain && (
@@ -2119,20 +2293,66 @@ export default function Home() {
                         {isMatched && (
                             <div className="absolute inset-x-0 bottom-3 sm:bottom-5 z-30 flex flex-col items-center gap-2 px-3 dock-in">
                                 {openPanel === 'filters' && (
-                                    <div className="flex max-w-full items-center gap-1 overflow-x-auto rounded-full border border-paper/10 bg-ink-900/75 backdrop-blur-xl p-1.5 animate-fade-in scrollbar-none">
-                                        {(Object.keys(FILTERS) as VideoFilter[]).map((f) => (
-                                            <span key={f} className="contents">
-                                                {(f === 'neon' || f === 'blur') && <span className="mx-1 h-5 w-px shrink-0 bg-paper/15" aria-hidden="true" />}
-                                                <button
-                                                    onClick={() => chooseFilter(f)}
-                                                    disabled={faceLoading}
-                                                    className={`shrink-0 rounded-full px-3.5 py-2 text-[13px] transition disabled:opacity-50 ${videoFilter === f ? 'bg-paper text-ink-900' : 'text-paper-dim hover:bg-paper/10 hover:text-paper'}`}
-                                                >
-                                                    {FILTERS[f].label}
-                                                </button>
-                                            </span>
-                                        ))}
-                                        {faceLoading && <span className="shrink-0 px-2 font-mono text-[10.5px] text-paper-faint">loading…</span>}
+                                    <div className="w-full max-w-[420px] rounded-3xl border border-paper/10 bg-ink-900/80 backdrop-blur-xl p-2 animate-fade-in">
+                                        <div className="flex items-center justify-between gap-2 px-1 pb-2">
+                                            <div className="flex rounded-full bg-paper/5 p-0.5 text-[12.5px]">
+                                                {([['face', 'Face'], ['background', 'Background'], ['privacy', 'Privacy']] as const).map(([id, label]) => (
+                                                    <button
+                                                        key={id}
+                                                        onClick={() => {
+                                                            setFilterTab(id)
+                                                            // Warm up the engine this tab needs
+                                                            if (id === 'face') ensureFaceTracker()
+                                                            if (id === 'background') ensureSegmenter()
+                                                        }}
+                                                        className={`rounded-full px-3 py-1.5 transition ${filterTab === id ? 'bg-paper text-ink-900' : 'text-paper-dim hover:text-paper'}`}
+                                                    >
+                                                        {label}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                            {faceLoading && <span className="font-mono text-[10.5px] text-paper-faint">loading…</span>}
+                                        </div>
+                                        <div className="picker-rail flex snap-x snap-mandatory gap-3 overflow-x-auto overscroll-x-contain scrollbar-none px-3 pb-1 pt-1">
+                                            {filterTab === 'background'
+                                                ? BACKGROUNDS.map((b) => (
+                                                      <PickerItem
+                                                          key={b.id}
+                                                          label={b.label}
+                                                          active={background === b.id}
+                                                          disabled={faceLoading}
+                                                          onClick={() => (b.id === 'custom' ? bgInputRef.current?.click() : chooseBackground(b.id))}
+                                                      >
+                                                          {b.id === 'none' ? (
+                                                              <OffGlyph />
+                                                          ) : b.id === 'blur' ? (
+                                                              <span className="h-full w-full rounded-full bg-gradient-to-br from-paper/40 to-paper/5 blur-[2px]" />
+                                                          ) : b.id === 'custom' ? (
+                                                              <span className="text-xl text-paper">+</span>
+                                                          ) : (
+                                                              // eslint-disable-next-line @next/next/no-img-element
+                                                              <img src={sceneThumb(b.id)} alt="" className="h-full w-full rounded-full object-cover" />
+                                                          )}
+                                                      </PickerItem>
+                                                  ))
+                                                : (Object.keys(FILTERS) as VideoFilter[])
+                                                      .filter((f) => f === 'none' || FILTERS[f].group === filterTab)
+                                                      .map((f) => (
+                                                          <PickerItem key={f} label={FILTERS[f].label} active={videoFilter === f} disabled={faceLoading} onClick={() => chooseFilter(f)}>
+                                                              {f === 'none' ? <OffGlyph /> : <span className="text-[22px] leading-none">{FILTERS[f].thumb}</span>}
+                                                          </PickerItem>
+                                                      ))}
+                                        </div>
+                                        <input
+                                            ref={bgInputRef}
+                                            type="file"
+                                            accept="image/*"
+                                            className="hidden"
+                                            onChange={(e) => {
+                                                onBackgroundFile(e.target.files?.[0])
+                                                e.target.value = ''
+                                            }}
+                                        />
                                     </div>
                                 )}
                                 {openPanel === 'react' && (
@@ -2179,11 +2399,11 @@ export default function Home() {
                                     <DockButton label={isLocalCameraEnabled ? 'Camera off' : 'Camera on'} active={!isLocalCameraEnabled} onClick={toggleCamera}>
                                         <Icon name={isLocalCameraEnabled ? 'cam' : 'camOff'} />
                                     </DockButton>
-                                    <DockButton label="Privacy filters" pressed={openPanel === 'filters' || videoFilter !== 'none'} onClick={() => {
+                                    <DockButton label="Filters and backgrounds" pressed={openPanel === 'filters' || videoFilter !== 'none' || background !== 'none'} onClick={() => {
                                             const opening = openPanel !== 'filters'
                                             setOpenPanel(opening ? 'filters' : 'none')
                                             // Warm up face tracking so choosing a filter feels instant
-                                            if (opening) ensureFaceTracker()
+                                            if (opening && filterTab === 'face') ensureFaceTracker()
                                         }}>
                                         <Icon name="sparkle" />
                                     </DockButton>
@@ -2462,6 +2682,26 @@ export default function Home() {
                 </div>
             </footer>
         </div>
+    )
+}
+
+function PickerItem({ label, active, disabled, onClick, children }: { label: string; active: boolean; disabled?: boolean; onClick: () => void; children: React.ReactNode }) {
+    return (
+        <button onClick={onClick} disabled={disabled} className="group flex w-[58px] shrink-0 snap-center flex-col items-center gap-1.5 disabled:opacity-50" aria-pressed={active}>
+            <span className={`picker-ring grid h-[54px] w-[54px] place-items-center rounded-full p-[2px] transition-transform duration-300 ${active ? 'is-active scale-105' : 'group-hover:scale-105'}`}>
+                <span className="grid h-full w-full place-items-center overflow-hidden rounded-full bg-ink-800">{children}</span>
+            </span>
+            <span className={`w-full truncate text-center text-[10.5px] ${active ? 'text-paper' : 'text-paper-mute'}`}>{label}</span>
+        </button>
+    )
+}
+
+function OffGlyph() {
+    return (
+        <svg viewBox="0 0 24 24" className="h-5 w-5 text-paper-dim" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="8" />
+            <path d="M6.5 17.5l11-11" />
+        </svg>
     )
 }
 
