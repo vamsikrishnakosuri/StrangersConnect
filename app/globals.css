@@ -24,17 +24,57 @@ body {
 
 /* Video aspect ratio - Mobile: tall portrait that still leaves room for chat, Desktop: landscape */
 .video-container {
-  aspect-ratio: 4/5;
-  --pip-w: 92px;
-  --pip-h: 124px;
+  aspect-ratio: 3/4;
+  max-height: calc(100dvh - 150px);
+  --pip-w: 96px;
+  --pip-h: 128px;
 }
 
 @media (min-width: 768px) {
   .video-container {
     aspect-ratio: 16/9;
-    --pip-w: 200px;
-    --pip-h: 120px;
+    --pip-w: 220px;
+    --pip-h: 132px;
   }
+}
+
+/* Laptops and PCs: the call fills the screen height */
+@media (min-width: 1024px) {
+  .video-container {
+    aspect-ratio: auto;
+    height: calc(100dvh - 6.5rem);
+    min-height: 460px;
+    max-height: none;
+    --pip-w: 240px;
+    --pip-h: 144px;
+  }
+  .call-chat {
+    height: calc(100dvh - 6.5rem);
+    min-height: 460px;
+  }
+}
+
+/* Reactions drift up and fade, like bubbles */
+.floater {
+  animation: floater 2.6s cubic-bezier(0.2, 0.6, 0.3, 1) forwards;
+  filter: drop-shadow(0 6px 16px rgba(0, 0, 0, 0.45));
+}
+
+@keyframes floater {
+  0% { transform: translateY(0) scale(0.6); opacity: 0; }
+  12% { transform: translateY(-20px) scale(1.15); opacity: 1; }
+  100% { transform: translateY(-260px) scale(1); opacity: 0; }
+}
+
+/* "tap to swap" shows briefly at the start of a call */
+.swap-hint {
+  animation: swap-hint 5s ease forwards;
+}
+
+@keyframes swap-hint {
+  0%, 10% { opacity: 0; }
+  20%, 75% { opacity: 1; }
+  100% { opacity: 0; }
 }
 
 /* Dock floats up once the call starts */
@@ -252,10 +292,18 @@ input[type="range"]::-moz-range-thumb {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .draw, .rise, .breathe, .signal, .ring, .orbit-a, .orbit-b, .spin-slow, .sway, .dock-in {
+  .draw, .rise, .breathe, .signal, .ring, .orbit-a, .orbit-b, .spin-slow, .sway, .dock-in, .floater, .swap-hint {
     animation: none !important;
     stroke-dashoffset: 0 !important;
     opacity: 1 !important;
     transform: none !important;
   }
+}
+
+.scrollbar-none {
+  scrollbar-width: none;
+}
+
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
 }

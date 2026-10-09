@@ -35,3 +35,6 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+
+# copied from node_modules at build time
+/public/mediapipe/wasm

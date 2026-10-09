@@ -7,6 +7,33 @@ import { v4 as uuidv4 } from 'uuid'
 import Landing from '@/components/Landing'
 import { SearchRings } from '@/components/Illustrations'
 import { LogoMark } from '@/components/Logo'
+import { drawFaceFx, loadFaceLandmarker, type FaceFx } from '@/lib/faceFx'
+import type { FaceLandmarker, NormalizedLandmark } from '@mediapipe/tasks-vision'
+
+type VideoFilter = 'none' | FaceFx | 'blur' | 'pixel'
+
+const FILTERS: Record<VideoFilter, { label: string; css: string; face?: boolean }> = {
+    none: { label: 'Off', css: 'none' },
+    bunny: { label: 'Bunny', css: 'none', face: true },
+    kitty: { label: 'Kitty', css: 'none', face: true },
+    bigeyes: { label: 'Big eyes', css: 'none', face: true },
+    bignose: { label: 'Big nose', css: 'none', face: true },
+    shades: { label: 'Shades', css: 'none', face: true },
+    blur: { label: 'Blur', css: 'blur(16px)' },
+    pixel: { label: 'Pixelate', css: 'none' },
+}
+
+// Older Safari has no canvas filters; there, Blur falls back to a heavy mosaic
+const CANVAS_FILTERS = (() => {
+    if (typeof document === 'undefined') return true
+    const ctx = document.createElement('canvas').getContext('2d')
+    if (!ctx || !('filter' in ctx)) return false
+    ctx.filter = 'blur(2px)'
+    return ctx.filter === 'blur(2px)'
+})()
+
+const REACTIONS = ['❤️', '😂', '😮', '👏', '🔥', '👋']
+const CHAT_EMOJIS = ['😀', '😂', '🥹', '😊', '😍', '😎', '🤔', '😅', '🙌', '👍', '👋', '🙏', '🔥', '✨', '🎉', '❤️']
 
 interface Message {
     id: string
@@ -60,6 +87,17 @@ export default function Home() {
     const [lastPeer, setLastPeer] = useState<string | null>(null)
     const [rematchAnswer, setRematchAnswer] = useState<'yes' | 'no' | null>(null)
     const [strangerTyping, setStrangerTyping] = useState(false)
+
+    // Privacy filters run on this device before video is sent, so the raw face never leaves it
+    const [videoFilter, setVideoFilter] = useState<VideoFilter>('none')
+    const filterRef = useRef<VideoFilter>('none')
+    const filterPipeRef = useRef<{ timer: ReturnType<typeof setInterval>; track: MediaStreamTrack; video: HTMLVideoElement } | null>(null)
+    const [localPreview, setLocalPreview] = useState<MediaStream | null>(null)
+    const faceLmRef = useRef<FaceLandmarker | null>(null)
+    const [faceLoading, setFaceLoading] = useState(false)
+    const [openPanel, setOpenPanel] = useState<'none' | 'volume' | 'filters' | 'react'>('none')
+    const [floaters, setFloaters] = useState<{ id: string; e: string; x: number; mine: boolean }[]>([])
+    const [showEmojiPicker, setShowEmojiPicker] = useState(false)
     const typingSentRef = useRef(0)
 
     const userId = useRef(uuidv4())
@@ -757,10 +795,14 @@ export default function Home() {
             console.log('🎤 Audio tracks:', stream.getAudioTracks().length)
 
             localStreamRef.current = stream
+            const rawVideo = stream.getVideoTracks()[0]
+            const outVideo = rawVideo && filterRef.current !== 'none' ? buildFilteredTrack(rawVideo) : rawVideo
+            if (FILTERS[filterRef.current].face) ensureFaceTracker()
+            setLocalPreview(outVideo ? new MediaStream([outVideo]) : null)
 
             // Ensure local video is visible
             if (localVideoRef.current) {
-                localVideoRef.current.srcObject = stream
+                localVideoRef.current.srcObject = outVideo ? new MediaStream([outVideo]) : stream
                 localVideoRef.current.playsInline = true
                 localVideoRef.current.autoplay = true
                 localVideoRef.current.muted = true
@@ -777,7 +819,9 @@ export default function Home() {
             const pc = createPeerConnection(socketRef.current, null) // strangerId not available yet in startVideo
 
             // Add all tracks - CRITICAL for sending video
-            stream.getTracks().forEach((track) => {
+            // With a filter on, the canvas track is sent instead of the raw camera
+            const outgoing = [...stream.getAudioTracks(), ...(outVideo ? [outVideo] : [])]
+            outgoing.forEach((track) => {
                 const sender = pc.addTrack(track, stream)
                 console.log('➕ Added track:', track.kind, '- Enabled:', track.enabled, '- ReadyState:', track.readyState)
 
@@ -796,8 +840,163 @@ export default function Home() {
         }
     }
 
+    // Draws the camera into a canvas with the chosen filter and returns the canvas track
+    const buildFilteredTrack = (raw: MediaStreamTrack): MediaStreamTrack => {
+        stopFilterPipe()
+        const settings = raw.getSettings()
+        const scale = Math.min(1, 640 / (settings.width || 640))
+        const w = Math.round((settings.width || 640) * scale)
+        const h = Math.round((settings.height || 480) * scale)
+        const canvas = document.createElement('canvas')
+        canvas.width = w
+        canvas.height = h
+        const ctx = canvas.getContext('2d')!
+        const small = document.createElement('canvas')
+        const sctx = small.getContext('2d')!
+        const frame = document.createElement('canvas')
+        frame.width = w
+        frame.height = h
+        const fctx = frame.getContext('2d')!
+        const scratch = document.createElement('canvas')
+        let lastFace: { lm: NormalizedLandmark[]; at: number } | null = null
+        const video = document.createElement('video')
+        video.muted = true
+        video.playsInline = true
+        video.srcObject = new MediaStream([raw])
+        video.play().catch(() => {})
+
+        const draw = () => {
+            if (video.readyState < 2) return
+            const f = filterRef.current
+            if (f === 'pixel' || (f === 'blur' && !CANVAS_FILTERS)) {
+                // Mosaic: shrink then stretch without smoothing. Works in every browser.
+                const block = f === 'pixel' ? 14 : 22
+                small.width = Math.max(1, Math.round(w / block))
+                small.height = Math.max(1, Math.round(h / block))
+                sctx.drawImage(video, 0, 0, small.width, small.height)
+                ctx.imageSmoothingEnabled = false
+                ctx.drawImage(small, 0, 0, w, h)
+                return
+            }
+            if (FILTERS[f].face) {
+                fctx.drawImage(video, 0, 0, w, h)
+                ctx.drawImage(frame, 0, 0)
+                const lmk = faceLmRef.current
+                if (!lmk) return
+                try {
+                    const res = lmk.detectForVideo(frame, performance.now())
+                    if (res.faceLandmarks[0]) lastFace = { lm: res.faceLandmarks[0], at: performance.now() }
+                } catch {
+                    // a dropped frame is fine
+                }
+                // Keep the effect on through brief tracking blips
+                if (lastFace && performance.now() - lastFace.at < 400) drawFaceFx(ctx, frame, lastFace.lm, f as FaceFx, scratch)
+                return
+            }
+            ctx.filter = CANVAS_FILTERS ? FILTERS[f].css : 'none'
+            ctx.drawImage(video, 0, 0, w, h)
+            ctx.filter = 'none'
+        }
+        const timer = setInterval(draw, 1000 / 24)
+        const track = canvas.captureStream(24).getVideoTracks()[0]
+        filterPipeRef.current = { timer, track, video }
+        return track
+    }
+
+    const stopFilterPipe = () => {
+        const pipe = filterPipeRef.current
+        if (!pipe) return
+        clearInterval(pipe.timer)
+        pipe.track.stop()
+        pipe.video.srcObject = null
+        filterPipeRef.current = null
+    }
+
+    const ensureFaceTracker = async () => {
+        if (faceLmRef.current) return true
+        setFaceLoading(true)
+        try {
+            faceLmRef.current = await loadFaceLandmarker()
+            return true
+        } catch (error) {
+            console.error('Face filters unavailable:', error)
+            setNotice('Face filters are not supported on this device.')
+            return false
+        } finally {
+            setFaceLoading(false)
+        }
+    }
+
+    const chooseFilter = async (f: VideoFilter) => {
+        if (FILTERS[f].face && !(await ensureFaceTracker())) f = 'none'
+        setVideoFilter(f)
+        filterRef.current = f
+        try {
+            localStorage.setItem('sc-filter', f)
+        } catch {
+            // ignore
+        }
+        const raw = localStreamRef.current?.getVideoTracks()[0]
+        if (!raw) return
+        const sender = peerConnectionRef.current?.getSenders().find((x) => x.track?.kind === 'video')
+        if (f === 'none') {
+            await sender?.replaceTrack(raw)
+            stopFilterPipe()
+            setLocalPreview(new MediaStream([raw]))
+            return
+        }
+        // Already filtering: the draw loop reads filterRef, so just keep the same track
+        if (filterPipeRef.current) return
+        const out = buildFilteredTrack(raw)
+        await sender?.replaceTrack(out)
+        setLocalPreview(new MediaStream([out]))
+    }
+
+    // Remember the filter between visits
+    useEffect(() => {
+        try {
+            const saved = localStorage.getItem('sc-filter') as VideoFilter | null
+            if (saved && saved in FILTERS) {
+                setVideoFilter(saved)
+                filterRef.current = saved
+            }
+        } catch {
+            // ignore
+        }
+    }, [])
+
+    // The self-view only exists once a match renders, so attach the stream whenever it appears
+    useEffect(() => {
+        const el = localVideoRef.current
+        if (!el || !isMatched || !localPreview) return
+        if (el.srcObject !== localPreview) {
+            el.srcObject = localPreview
+            el.play().catch(() => {})
+        }
+    }, [isMatched, localPreview, isLocalMain])
+
+    const spawnFloater = (e: string, mine: boolean) => {
+        const id = uuidv4()
+        setFloaters((prev) => [...prev.slice(-12), { id, e, x: 10 + Math.random() * 80, mine }])
+        setTimeout(() => setFloaters((prev) => prev.filter((f) => f.id !== id)), 2600)
+    }
+
+    // Everything sent to the stranger is a small JSON payload, encrypted end to end
+    const sendPayload = async (payload: { k: 'msg'; t: string } | { k: 'react'; e: string }) => {
+        if (!socket || !strangerId || !encryptionKeyRef.current) return false
+        const ciphertext = await encryptMessage(JSON.stringify(payload), encryptionKeyRef.current)
+        socket.emit('send-message', { text: ciphertext, to: strangerId, encrypted: true })
+        return true
+    }
+
+    const sendReaction = async (e: string) => {
+        if (await sendPayload({ k: 'react', e })) spawnFloater(e, true)
+    }
+
     // Stop video
     const stopVideo = () => {
+        stopFilterPipe()
+        setLocalPreview(null)
         localStreamRef.current?.getTracks().forEach((track) => track.stop())
         localStreamRef.current = null
         peerConnectionRef.current?.close()
@@ -1228,8 +1427,19 @@ export default function Home() {
             // Only show messages that the stranger's browser encrypted with our shared key
             if (!data.encrypted || !encryptionKeyRef.current || data.from !== strangerIdRef.current) return
             try {
-                const text = await decryptMessage(data.text, encryptionKeyRef.current)
-                setMessages((prev) => [...prev, { id: uuidv4(), text, sender: 'stranger' }])
+                const raw = await decryptMessage(data.text, encryptionKeyRef.current)
+                let payload: { k?: string; t?: string; e?: string } = {}
+                try {
+                    payload = JSON.parse(raw)
+                } catch {
+                    payload = { k: 'msg', t: raw }
+                }
+                if (payload.k === 'react') {
+                    if (payload.e && REACTIONS.includes(payload.e)) spawnFloater(payload.e, false)
+                } else if (typeof payload.t === 'string' && payload.t.trim()) {
+                    const text = payload.t.slice(0, 2000)
+                    setMessages((prev) => [...prev, { id: uuidv4(), text, sender: 'stranger' }])
+                }
             } catch {
                 setMessages((prev) => [...prev, { id: uuidv4(), text: 'A message failed verification and was hidden.', sender: 'system' }])
             }
@@ -1331,6 +1541,14 @@ export default function Home() {
         }
     }
 
+    useEffect(() => {
+        if (!isMatched) {
+            setOpenPanel('none')
+            setShowEmojiPicker(false)
+            setFloaters([])
+        }
+    }, [isMatched])
+
     const answerRematch = (answer: 'yes' | 'no') => {
         setRematchAnswer(answer)
         if (answer === 'no' && socket && lastPeer) socket.emit('avoid', { peerId: lastPeer })
@@ -1356,10 +1574,10 @@ export default function Home() {
         // Never send plaintext: wait until the key exchange has finished
         if (!messageText || !socket || !strangerId || !encryptionKeyRef.current) return
         try {
-            const ciphertext = await encryptMessage(messageText, encryptionKeyRef.current)
+            await sendPayload({ k: 'msg', t: messageText })
             setMessages((prev) => [...prev, { id: uuidv4(), text: messageText, sender: 'me' }])
-            socket.emit('send-message', { text: ciphertext, to: strangerId, encrypted: true })
             setMessageInput('')
+            setShowEmojiPicker(false)
             typingSentRef.current = 0
         } catch (error) {
             console.error('Failed to encrypt message:', error)
@@ -1402,7 +1620,7 @@ export default function Home() {
             </header>
 
             {/* Call area. The video container stays mounted at all times (MediaStreams need it). */}
-            <div className={isMatched ? 'mx-auto max-w-page px-4 sm:px-6 pt-6 pb-10 grid lg:grid-cols-[minmax(0,1fr)_340px] gap-4 relative z-10' : 'relative z-10'}>
+            <div className={isMatched ? 'mx-auto max-w-[1600px] px-3 sm:px-6 pt-4 sm:pt-5 pb-8 grid lg:grid-cols-[minmax(0,1fr)_360px] gap-3 sm:gap-4 relative z-10' : 'relative z-10'}>
                 <div className="flex flex-col gap-4 min-w-0">
                     <div className="relative">
                         <div
@@ -1411,7 +1629,7 @@ export default function Home() {
                         display: 'block', // Always block - never none (MediaStreams need visible parent)
                         opacity: isMatched ? '1' : '0', // Hide visually but keep in DOM
                         pointerEvents: isMatched ? 'auto' : 'none',
-                        height: isMatched ? 'auto' : '0', // Collapse when not matched
+                        height: isMatched ? undefined : '0', // Collapse when not matched; CSS sizes it otherwise
                         overflow: 'hidden', // Keep overflow hidden but ensure video fills container
                         position: 'relative' // Establish positioning context
                     }}
@@ -1784,6 +2002,25 @@ export default function Home() {
                     )}
                 </div>
                         {isMatched && (
+                            <div className="pointer-events-none absolute inset-0 z-30 overflow-hidden" aria-hidden="true">
+                                {floaters.map((f) => (
+                                    <span key={f.id} className="floater absolute bottom-20 text-4xl" style={{ left: `${f.x}%` }}>
+                                        {f.e}
+                                    </span>
+                                ))}
+                            </div>
+                        )}
+                        {isMatched && videoFilter !== 'none' && (
+                            <div className="pointer-events-none absolute left-3.5 top-12 z-30 rounded-full bg-black/45 backdrop-blur-md px-3 py-1 font-mono text-[10.5px] text-glow-soft animate-fade-in">
+                                {FILTERS[videoFilter].face ? FILTERS[videoFilter].label : `${FILTERS[videoFilter].label} privacy filter on`}
+                            </div>
+                        )}
+                        {isMatched && !isLocalMain && (
+                            <div className="pointer-events-none absolute right-3.5 z-30 font-mono text-[9.5px] text-paper-dim/80 swap-hint" style={{ top: 'calc(14px + var(--pip-h) + 6px)', width: 'var(--pip-w)', textAlign: 'center' }}>
+                                tap to swap
+                            </div>
+                        )}
+                        {isMatched && (
                             <div className="pointer-events-none absolute left-3.5 top-3.5 z-30 flex items-center gap-2 rounded-full bg-black/45 backdrop-blur-md px-3 py-1.5 font-mono text-[10.5px] text-paper-dim animate-fade-in">
                                 <span className="h-1.5 w-1.5 rounded-full bg-glow breathe" />
                                 <span className="hidden sm:inline">live · peer-to-peer · </span>encrypted
@@ -1792,7 +2029,39 @@ export default function Home() {
 
                         {isMatched && (
                             <div className="absolute inset-x-0 bottom-3 sm:bottom-5 z-30 flex flex-col items-center gap-2 px-3 dock-in">
-                                {showAudioControls && (
+                                {openPanel === 'filters' && (
+                                    <div className="flex max-w-full items-center gap-1 overflow-x-auto rounded-full border border-paper/10 bg-ink-900/75 backdrop-blur-xl p-1.5 animate-fade-in scrollbar-none">
+                                        {(Object.keys(FILTERS) as VideoFilter[]).map((f) => (
+                                            <span key={f} className="contents">
+                                                {f === 'blur' && <span className="mx-1 h-5 w-px shrink-0 bg-paper/15" aria-hidden="true" />}
+                                                <button
+                                                    onClick={() => chooseFilter(f)}
+                                                    disabled={faceLoading}
+                                                    className={`shrink-0 rounded-full px-3.5 py-2 text-[13px] transition disabled:opacity-50 ${videoFilter === f ? 'bg-paper text-ink-900' : 'text-paper-dim hover:bg-paper/10 hover:text-paper'}`}
+                                                >
+                                                    {FILTERS[f].label}
+                                                </button>
+                                            </span>
+                                        ))}
+                                        {faceLoading && <span className="shrink-0 px-2 font-mono text-[10.5px] text-paper-faint">loading…</span>}
+                                    </div>
+                                )}
+                                {openPanel === 'react' && (
+                                    <div className="flex gap-1 rounded-full border border-paper/10 bg-ink-900/75 backdrop-blur-xl p-1.5 animate-fade-in">
+                                        {REACTIONS.map((e) => (
+                                            <button
+                                                key={e}
+                                                onClick={() => sendReaction(e)}
+                                                disabled={!chatReady}
+                                                aria-label={`Send ${e}`}
+                                                className="h-10 w-10 grid place-items-center rounded-full text-[22px] transition hover:bg-paper/10 hover:scale-110 active:scale-95 disabled:opacity-40"
+                                            >
+                                                {e}
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+                                {openPanel === 'volume' && (
                                     <div className="w-full max-w-sm rounded-2xl border border-paper/10 bg-ink-900/75 backdrop-blur-xl p-4 space-y-3 animate-fade-in">
                                         {[
                                             { label: 'Your mic', value: localAudioVolume, onChange: handleLocalVolumeChange },
@@ -1821,9 +2090,20 @@ export default function Home() {
                                     <DockButton label={isLocalCameraEnabled ? 'Camera off' : 'Camera on'} active={!isLocalCameraEnabled} onClick={toggleCamera}>
                                         <Icon name={isLocalCameraEnabled ? 'cam' : 'camOff'} />
                                     </DockButton>
-                                    <DockButton label="Volume" pressed={showAudioControls} onClick={() => setShowAudioControls(!showAudioControls)}>
-                                        <Icon name="speaker" />
+                                    <DockButton label="Privacy filters" pressed={openPanel === 'filters' || videoFilter !== 'none'} onClick={() => setOpenPanel(openPanel === 'filters' ? 'none' : 'filters')}>
+                                        <Icon name="sparkle" />
                                     </DockButton>
+                                    <DockButton label="React" pressed={openPanel === 'react'} onClick={() => setOpenPanel(openPanel === 'react' ? 'none' : 'react')}>
+                                        <Icon name="smile" />
+                                    </DockButton>
+                                    <span className="hidden sm:contents">
+                                        <DockButton label="Swap views" onClick={() => setIsLocalMain(!isLocalMain)}>
+                                            <Icon name="swap" />
+                                        </DockButton>
+                                        <DockButton label="Volume" pressed={openPanel === 'volume'} onClick={() => setOpenPanel(openPanel === 'volume' ? 'none' : 'volume')}>
+                                            <Icon name="speaker" />
+                                        </DockButton>
+                                    </span>
                                     <span className="mx-0.5 h-6 w-px bg-paper/15" aria-hidden="true" />
                                     <button
                                         onClick={disconnect}
@@ -1849,7 +2129,7 @@ export default function Home() {
 
                 {/* Chat */}
                 {isMatched && (
-                    <aside className="flex flex-col overflow-hidden rounded-3xl border border-paper/10 bg-gradient-to-b from-ink-850 to-ink-900 min-h-[360px] lg:min-h-0">
+                    <aside className="call-chat flex flex-col overflow-hidden rounded-3xl border border-paper/10 bg-gradient-to-b from-ink-850 to-ink-900 min-h-[360px]">
                         <div className="flex items-end justify-between gap-3 px-5 pt-4 pb-3">
                             <h2 className="font-serif text-2xl leading-none">Chat</h2>
                             <p className={`flex items-center gap-1.5 whitespace-nowrap font-mono text-[10.5px] ${chatReady ? 'text-emerald-300/90' : 'text-paper-faint'}`}>
@@ -1925,7 +2205,31 @@ export default function Home() {
                                 sendMessage()
                             }}
                         >
-                            <div className="flex items-center gap-2 rounded-full border border-paper/10 bg-ink-950/70 p-1.5 pl-4 transition focus-within:border-paper/30 focus-within:shadow-[0_0_0_4px_rgba(236,233,226,0.04)]">
+                            {showEmojiPicker && (
+                                <div className="mb-2 grid grid-cols-8 gap-1 rounded-2xl border border-paper/10 bg-ink-950/80 p-2 animate-fade-in">
+                                    {CHAT_EMOJIS.map((e) => (
+                                        <button
+                                            key={e}
+                                            type="button"
+                                            onClick={() => setMessageInput((v) => (v + e).slice(0, 2000))}
+                                            className="h-9 grid place-items-center rounded-xl text-xl transition hover:bg-paper/10"
+                                            aria-label={`Insert ${e}`}
+                                        >
+                                            {e}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                            <div className="flex items-center gap-2 rounded-full border border-paper/10 bg-ink-950/70 p-1.5 pl-2 transition focus-within:border-paper/30 focus-within:shadow-[0_0_0_4px_rgba(236,233,226,0.04)]">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                                    className={`h-9 w-9 shrink-0 grid place-items-center rounded-full transition ${showEmojiPicker ? 'bg-paper/15 text-paper' : 'text-paper-mute hover:text-paper hover:bg-paper/10'}`}
+                                    aria-label="Emoji"
+                                    aria-expanded={showEmojiPicker}
+                                >
+                                    <Icon name="smile" />
+                                </button>
                                 <input
                                     type="text"
                                     value={messageInput}
@@ -2149,7 +2453,7 @@ function RematchQuestion({ answer, onAnswer }: { answer: 'yes' | 'no' | null; on
     )
 }
 
-function Icon({ name, small }: { name: 'mic' | 'micOff' | 'cam' | 'camOff' | 'speaker' | 'next' | 'end' | 'flag' | 'lock' | 'send'; small?: boolean }) {
+function Icon({ name, small }: { name: 'mic' | 'micOff' | 'cam' | 'camOff' | 'speaker' | 'next' | 'end' | 'flag' | 'lock' | 'send' | 'swap' | 'smile' | 'sparkle'; small?: boolean }) {
     const p: Record<typeof name, React.ReactElement> = {
         mic: <><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3" /></>,
         micOff: <><path d="M15 9.3V6a3 3 0 0 0-5.7-1.3M9 9v2a3 3 0 0 0 5 2.2M5 11a7 7 0 0 0 11.5 5.3M19 11a7 7 0 0 1-.4 2.3M12 18v3M3 3l18 18" /></>,
@@ -2161,6 +2465,9 @@ function Icon({ name, small }: { name: 'mic' | 'micOff' | 'cam' | 'camOff' | 'sp
         flag: <><path d="M5 21V4M5 4.5c4-2.5 7 2.5 13 0v9c-6 2.5-9-2.5-13 0" /></>,
         lock: <><rect x="5" y="11" width="14" height="10" rx="2" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></>,
         send: <><path d="M5 12h13M13 6l6 6-6 6" /></>,
+        swap: <><path d="M7 7h11l-3-3M17 17H6l3 3" /></>,
+        smile: <><circle cx="12" cy="12" r="8.5" /><path d="M8.5 14c1.8 2 5.2 2 7 0M9.3 9.8h.01M14.7 9.8h.01" /></>,
+        sparkle: <><path d="M12 3.5l1.8 5.2 5.2 1.8-5.2 1.8L12 17.5l-1.8-5.2-5.2-1.8 5.2-1.8L12 3.5Z" /><path d="M18.5 16.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7.7-1.8Z" /></>,
     }
     return (
         <svg viewBox="0 0 24 24" className={small ? 'h-3.5 w-3.5' : 'h-[18px] w-[18px]'} fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">

@@ -9,7 +9,7 @@ const signalOrigin = new URL(signalUrl).origin
 const csp = [
   "default-src 'self'",
   // Next.js hydrates with inline scripts; no third-party scripts are allowed
-  `script-src 'self' 'unsafe-inline'${isProd ? '' : " 'unsafe-eval'"}`,
+  `script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'${isProd ? '' : " 'unsafe-eval'"}`,
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:",
   "media-src 'self' blob:",
