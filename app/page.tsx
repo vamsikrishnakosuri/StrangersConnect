@@ -807,8 +807,13 @@ export default function Home() {
 
             localStreamRef.current = stream
             const rawVideo = stream.getVideoTracks()[0]
-            const outVideo = rawVideo && filterRef.current !== 'none' ? buildFilteredTrack(rawVideo) : rawVideo
-            if (FILTERS[filterRef.current].face) ensureFaceTracker()
+            let outVideo = rawVideo
+            if (rawVideo && filterRef.current !== 'none') {
+                if (FILTERS[filterRef.current].face) await ensureFaceTracker()
+                const built = buildFilteredTrack(rawVideo)
+                await settle(built.ready)
+                outVideo = built.track
+            }
             setLocalPreview(outVideo ? new MediaStream([outVideo]) : null)
 
             // Ensure local video is visible
@@ -851,33 +856,57 @@ export default function Home() {
         }
     }
 
-    // Draws the camera into a canvas with the chosen filter and returns the canvas track
-    const buildFilteredTrack = (raw: MediaStreamTrack): MediaStreamTrack => {
+    // Draws the camera into a canvas with the chosen filter. Returns the canvas track and a
+    // promise that resolves once a real frame has been drawn, so callers can switch over
+    // without the video ever going blank.
+    const buildFilteredTrack = (raw: MediaStreamTrack): { track: MediaStreamTrack; ready: Promise<void> } => {
         stopFilterPipe()
-        const settings = raw.getSettings()
-        const scale = Math.min(1, 640 / (settings.width || 640))
-        const w = Math.round((settings.width || 640) * scale)
-        const h = Math.round((settings.height || 480) * scale)
         const canvas = document.createElement('canvas')
-        canvas.width = w
-        canvas.height = h
         const ctx = canvas.getContext('2d')!
         const small = document.createElement('canvas')
         const sctx = small.getContext('2d')!
         const frame = document.createElement('canvas')
-        frame.width = w
-        frame.height = h
         const fctx = frame.getContext('2d')!
         const scratch = document.createElement('canvas')
+        let w = 0
+        let h = 0
         let lastFace: { lm: NormalizedLandmark[]; at: number } | null = null
+
+        // iOS only decodes frames for video elements that are in the document
         const video = document.createElement('video')
         video.muted = true
         video.playsInline = true
+        video.setAttribute('playsinline', '')
+        video.style.cssText = 'position:fixed;left:0;top:0;width:2px;height:2px;opacity:0;pointer-events:none;z-index:-1'
+        document.body.appendChild(video)
         video.srcObject = new MediaStream([raw])
         video.play().catch(() => {})
 
+        let markReady: () => void = () => {}
+        const ready = new Promise<void>((resolve) => (markReady = resolve))
+
+        // Match the canvas to the camera's real frames (portrait phones, rotation)
+        const fitToVideo = () => {
+            const vw = video.videoWidth
+            const vh = video.videoHeight
+            if (!vw || !vh) return false
+            const scale = Math.min(1, 720 / Math.max(vw, vh))
+            const nw = Math.round(vw * scale)
+            const nh = Math.round(vh * scale)
+            if (nw !== w || nh !== h) {
+                w = canvas.width = frame.width = nw
+                h = canvas.height = frame.height = nh
+                const pipe = filterPipeRef.current
+                if (pipe?.renderer) {
+                    pipe.renderer.dispose()
+                    pipe.renderer = null
+                }
+            }
+            return true
+        }
+
         const draw = () => {
-            if (video.readyState < 2) return
+            if (video.readyState < 2 || !fitToVideo()) return
             const f = filterRef.current
             if (f === 'pixel' || (f === 'blur' && !CANVAS_FILTERS)) {
                 // Mosaic: shrink then stretch without smoothing. Works in every browser.
@@ -887,6 +916,7 @@ export default function Home() {
                 sctx.drawImage(video, 0, 0, small.width, small.height)
                 ctx.imageSmoothingEnabled = false
                 ctx.drawImage(small, 0, 0, w, h)
+                markReady()
                 return
             }
             const def = FILTERS[f]
@@ -904,13 +934,11 @@ export default function Home() {
                 // Keep the effect on through brief tracking blips
                 const lm = lastFace && performance.now() - lastFace.at < 400 ? lastFace.lm : null
                 const pipe = filterPipeRef.current
-                if ((def.paint || def.warp) && pipe && faceRenderModRef.current) {
-                    if (!pipe.renderer) {
-                        try {
-                            pipe.renderer = new faceRenderModRef.current.FaceRenderer(frame)
-                        } catch (error) {
-                            console.error('WebGL unavailable for face effects:', error)
-                        }
+                if ((def.paint || def.warp) && pipe && !pipe.renderer && faceRenderModRef.current) {
+                    try {
+                        pipe.renderer = new faceRenderModRef.current.FaceRenderer(frame)
+                    } catch (error) {
+                        console.error('WebGL unavailable for face effects:', error)
                     }
                 }
                 if ((def.paint || def.warp) && pipe?.renderer) {
@@ -919,17 +947,22 @@ export default function Home() {
                     ctx.drawImage(frame, 0, 0)
                 }
                 if (def.prop && lm) drawFaceFx(ctx, frame, lm, def.prop as FaceFx, scratch)
+                markReady()
                 return
             }
             ctx.filter = CANVAS_FILTERS ? FILTERS[f].css : 'none'
             ctx.drawImage(video, 0, 0, w, h)
             ctx.filter = 'none'
+            markReady()
         }
         const timer = setInterval(draw, 1000 / 24)
         const track = canvas.captureStream(24).getVideoTracks()[0]
         filterPipeRef.current = { timer, track, video, renderer: null }
-        return track
+        return { track, ready }
     }
+
+    // Never wait forever: after this long, switch anyway
+    const settle = (ready: Promise<void>, ms = 2500) => Promise.race([ready, new Promise<void>((r) => setTimeout(r, ms))])
 
     const stopFilterPipe = () => {
         const pipe = filterPipeRef.current
@@ -938,6 +971,7 @@ export default function Home() {
         pipe.renderer?.dispose()
         pipe.track.stop()
         pipe.video.srcObject = null
+        pipe.video.remove()
         filterPipeRef.current = null
     }
 
@@ -971,16 +1005,30 @@ export default function Home() {
         if (!raw) return
         const sender = peerConnectionRef.current?.getSenders().find((x) => x.track?.kind === 'video')
         if (f === 'none') {
+            if (!filterPipeRef.current) return
             await sender?.replaceTrack(raw)
-            stopFilterPipe()
             setLocalPreview(new MediaStream([raw]))
+            // Let the preview switch first, then tear the canvas down
+            setTimeout(() => {
+                if (filterRef.current === 'none') stopFilterPipe()
+            }, 300)
             return
         }
-        // Already filtering: the draw loop reads filterRef, so just keep the same track
-        if (filterPipeRef.current) return
-        const out = buildFilteredTrack(raw)
-        await sender?.replaceTrack(out)
-        setLocalPreview(new MediaStream([out]))
+        // Already filtering: the draw loop reads filterRef, so the switch is instant
+        const pipe = filterPipeRef.current
+        if (pipe) {
+            if (sender && sender.track !== pipe.track) {
+                await sender.replaceTrack(pipe.track)
+                setLocalPreview(new MediaStream([pipe.track]))
+            }
+            return
+        }
+        // Build in the background and keep sending the camera until the first frame is ready
+        const { track, ready } = buildFilteredTrack(raw)
+        await settle(ready)
+        if (filterRef.current === 'none') return
+        await sender?.replaceTrack(track)
+        setLocalPreview(new MediaStream([track]))
     }
 
     // Remember the filter between visits
@@ -2017,11 +2065,19 @@ export default function Home() {
                                 }}
                             >
                                 <video
-                                    ref={localVideoRef}
+                                    key={localPreview?.id ?? 'none'}
+                                    ref={(el) => {
+                                        localVideoRef.current = el
+                                        // Attach the stream the moment the element exists, so it shows a frame immediately
+                                        if (el && localPreview && el.srcObject !== localPreview) {
+                                            el.srcObject = localPreview
+                                            el.play().catch(() => {})
+                                        }
+                                    }}
                                     autoPlay
                                     playsInline
                                     muted
-                                    className="w-full h-full object-cover"
+                                    className="absolute inset-0 w-full h-full object-cover"
                                     style={{
                                         transform: 'scaleX(-1)',
                                         display: 'block',
@@ -2123,7 +2179,12 @@ export default function Home() {
                                     <DockButton label={isLocalCameraEnabled ? 'Camera off' : 'Camera on'} active={!isLocalCameraEnabled} onClick={toggleCamera}>
                                         <Icon name={isLocalCameraEnabled ? 'cam' : 'camOff'} />
                                     </DockButton>
-                                    <DockButton label="Privacy filters" pressed={openPanel === 'filters' || videoFilter !== 'none'} onClick={() => setOpenPanel(openPanel === 'filters' ? 'none' : 'filters')}>
+                                    <DockButton label="Privacy filters" pressed={openPanel === 'filters' || videoFilter !== 'none'} onClick={() => {
+                                            const opening = openPanel !== 'filters'
+                                            setOpenPanel(opening ? 'filters' : 'none')
+                                            // Warm up face tracking so choosing a filter feels instant
+                                            if (opening) ensureFaceTracker()
+                                        }}>
                                         <Icon name="sparkle" />
                                     </DockButton>
                                     <DockButton label="React" pressed={openPanel === 'react'} onClick={() => setOpenPanel(openPanel === 'react' ? 'none' : 'react')}>
