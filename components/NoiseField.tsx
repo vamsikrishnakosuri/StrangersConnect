@@ -16,6 +16,10 @@ precision mediump float;
 uniform vec2 res;
 uniform float time;
 uniform vec2 mouse;
+uniform vec3 cBase;
+uniform vec3 cDeep;
+uniform vec3 cMid;
+uniform vec3 cHigh;
 
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float noise(vec2 p) {
@@ -39,10 +43,10 @@ void main() {
     vec2 r = vec2(fbm(p * 1.8 + 3.0 * q + vec2(1.7, 9.2) + t * 1.3), fbm(p * 1.8 + 3.0 * q + vec2(8.3, 2.8) - t));
     float f = fbm(p * 1.6 + 2.5 * r + mouse * 0.25);
 
-    vec3 base = vec3(0.043, 0.047, 0.063);
-    vec3 deep = vec3(0.05, 0.13, 0.24);
-    vec3 teal = vec3(0.09, 0.55, 0.55);
-    vec3 cyan = vec3(0.40, 0.86, 0.95);
+    vec3 base = cBase;
+    vec3 deep = cDeep;
+    vec3 teal = cMid;
+    vec3 cyan = cHigh;
 
     vec3 col = mix(base, deep, smoothstep(0.25, 0.75, f));
     col = mix(col, teal, smoothstep(0.55, 0.95, f * length(q)) * 0.75);
@@ -59,7 +63,13 @@ void main() {
 }
 `
 
-export function NoiseField({ className = '' }: { className?: string }) {
+// Colour sets: cool for the hero, warm graphite and amber for quieter panels
+const PALETTES = {
+    cool: { base: [0.043, 0.047, 0.063], deep: [0.05, 0.13, 0.24], mid: [0.09, 0.55, 0.55], high: [0.4, 0.86, 0.95], bg: 'radial-gradient(ellipse at 50% 70%, #0d2238 0%, #0b0c10 70%)' },
+    warm: { base: [0.043, 0.043, 0.047], deep: [0.11, 0.095, 0.08], mid: [0.32, 0.25, 0.14], high: [0.95, 0.76, 0.31], bg: 'radial-gradient(ellipse at 50% 70%, #1d1914 0%, #0b0b0c 70%)' },
+}
+
+export function NoiseField({ className = '', palette = 'cool' }: { className?: string; palette?: keyof typeof PALETTES }) {
     const ref = useRef<HTMLCanvasElement>(null)
 
     useEffect(() => {
@@ -91,6 +101,11 @@ export function NoiseField({ className = '' }: { className?: string }) {
         const uRes = gl.getUniformLocation(prog, 'res')
         const uTime = gl.getUniformLocation(prog, 'time')
         const uMouse = gl.getUniformLocation(prog, 'mouse')
+        const pal = PALETTES[palette]
+        gl.uniform3fv(gl.getUniformLocation(prog, 'cBase'), pal.base)
+        gl.uniform3fv(gl.getUniformLocation(prog, 'cDeep'), pal.deep)
+        gl.uniform3fv(gl.getUniformLocation(prog, 'cMid'), pal.mid)
+        gl.uniform3fv(gl.getUniformLocation(prog, 'cHigh'), pal.high)
 
         const SCALE = 0.5
         let w = 0
@@ -148,14 +163,14 @@ export function NoiseField({ className = '' }: { className?: string }) {
             io.disconnect()
             window.removeEventListener('pointermove', onMove)
         }
-    }, [])
+    }, [palette])
 
     return (
         <canvas
             ref={ref}
             aria-hidden="true"
             className={`h-full w-full ${className}`}
-            style={{ background: 'radial-gradient(ellipse at 50% 70%, #0d2238 0%, #0b0c10 70%)' }}
+            style={{ background: PALETTES[palette].bg }}
         />
     )
 }

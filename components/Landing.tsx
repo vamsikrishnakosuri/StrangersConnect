@@ -155,8 +155,8 @@ export default function Landing({ onStart, isConnected }: Props) {
                         {/* The diagram sits on the same flowing gradient as the hero */}
                         <div data-anim="diagram" className="relative overflow-hidden rounded-[28px] border border-paper/10">
                             <div className="absolute inset-0" aria-hidden="true">
-                                <NoiseField />
-                                <div className="absolute inset-0 bg-ink-950/55" />
+                                <NoiseField palette="warm" />
+                                <div className="absolute inset-0 bg-ink-950/50" />
                             </div>
                             <div className="relative p-4 sm:p-6">
                                 <PrivacyDiagramV2 />
@@ -179,8 +179,8 @@ export default function Landing({ onStart, isConnected }: Props) {
                         ].map(([t, d], i) => (
                             <li key={t} data-anim="pillar" className={`group relative pt-8 lg:pr-8 ${i > 0 ? 'lg:pl-8 lg:border-l border-paper/10' : ''}`}>
                                 {/* soft card that appears while this promise is in focus */}
-                                <span data-anim="pillar-card" className="pointer-events-none absolute -inset-x-3 -bottom-4 top-3 rounded-2xl border border-paper/10 bg-ink-900/90 opacity-0 shadow-[0_30px_80px_-30px_rgba(103,232,249,0.35)]" aria-hidden="true" />
-                                <span className="absolute left-0 top-0 h-px w-0 bg-gradient-to-r from-[#67e8f9] to-transparent transition-all duration-500 group-hover:w-full lg:left-auto" aria-hidden="true" />
+                                <span data-anim="pillar-card" className="pointer-events-none absolute -inset-x-3 -bottom-4 top-3 rounded-2xl border border-paper/10 bg-ink-900/90 opacity-0 shadow-[0_30px_80px_-30px_rgba(242,193,78,0.28)]" aria-hidden="true" />
+                                <span className="absolute left-0 top-0 h-px w-0 bg-gradient-to-r from-glow to-transparent transition-all duration-500 group-hover:w-full lg:left-auto" aria-hidden="true" />
                                 <span className="relative font-mono text-[11px] text-paper-faint">0{i + 1}</span>
                                 <h3 className="relative mt-3 font-serif text-3xl tracking-[-0.01em] text-paper">{t}</h3>
                                 <p className="relative mt-3 text-[14.5px] leading-relaxed text-paper-mute">{d}</p>

@@ -7,17 +7,18 @@ import type React from 'react'
 // can only introduce them, and a live demo of a message scrambling in transit.
 
 const INK = '#ece9e2'
-const BLUE = '#f6d488' // you: the page's warm accent
-const TEAL = '#67e8f9' // them: cyan
-const CYAN = '#67e8f9'
+const BLUE = '#f2c14e' // you: the page's warm amber accent
+const TEAL = '#ece9e2' // them: warm paper white
+const CYAN = '#f6d488' // soft amber for locks and light
 
 const PATH = 'M150 232 C 250 272, 390 272, 490 232'
 
 function Person({ x, y, color }: { x: number; y: number; color: string }) {
+    // Outline figure in the site's line-art style, with a soft fill
     return (
-        <g transform={`translate(${x} ${y})`}>
-            <circle cx="0" cy="-10" r="9" fill={color} fillOpacity="0.9" />
-            <path d="M-17 18 C -15 4, 15 4, 17 18 Z" fill={color} fillOpacity="0.9" />
+        <g transform={`translate(${x} ${y})`} fill={color} fillOpacity="0.12" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="0" cy="-11" r="8.5" />
+            <path d="M-16 19 C -15 5, 15 5, 16 19" />
         </g>
     )
 }
@@ -25,7 +26,7 @@ function Person({ x, y, color }: { x: number; y: number; color: string }) {
 function Packet({ begin, reverse }: { begin: string; reverse?: boolean }) {
     return (
         <g>
-            <rect x="-9" y="-7" width="18" height="14" rx="3.5" fill="#0b1118" stroke={CYAN} strokeWidth="1.3" />
+            <rect x="-9" y="-7" width="18" height="14" rx="3.5" fill="#111114" stroke={CYAN} strokeWidth="1.3" />
             <path d="M-4 -7 V -10 C -4 -14, 4 -14, 4 -10 V -7" fill="none" stroke={CYAN} strokeWidth="1.3" />
             <circle cx="0" cy="0" r="1.6" fill={CYAN} />
             <animateMotion dur="3.6s" begin={begin} repeatCount="indefinite" keyPoints={reverse ? '1;0' : '0;1'} keyTimes="0;1" calcMode="linear" path={PATH} />
@@ -48,7 +49,11 @@ export function PrivacyDiagramV2() {
                         <feMergeNode in="SourceGraphic" />
                     </feMerge>
                 </filter>
-                <radialGradient id="pv-spot" cx="50%" cy="60%" r="60%">
+                <radialGradient id="pv-screen-you" cx="50%" cy="45%" r="70%">
+                    <stop offset="0" stopColor={BLUE} stopOpacity="0.14" />
+                    <stop offset="1" stopColor={BLUE} stopOpacity="0" />
+                </radialGradient>
+                <radialGradient id="pv-screen-them" cx="50%" cy="45%" r="70%">
                     <stop offset="0" stopColor={TEAL} stopOpacity="0.12" />
                     <stop offset="1" stopColor={TEAL} stopOpacity="0" />
                 </radialGradient>
@@ -56,7 +61,7 @@ export function PrivacyDiagramV2() {
 
             {/* Server: introduces you, then cannot see anything */}
             <g transform="translate(240 22)">
-                <rect x="0" y="0" width="160" height="52" rx="12" fill="#0d1219" stroke={INK} strokeOpacity="0.25" />
+                <rect x="0" y="0" width="160" height="52" rx="26" fill="#111114" stroke={INK} strokeOpacity="0.22" />
                 <g transform="translate(22 26)" fill="none" stroke={INK} strokeOpacity="0.75" strokeWidth="1.5" strokeLinecap="round">
                     <path d="M-12 0 C -7 -8, 7 -8, 12 0 C 7 8, -7 8, -12 0 Z" />
                     <circle cx="0" cy="0" r="3" />
@@ -73,7 +78,8 @@ export function PrivacyDiagramV2() {
 
             {/* You: phone */}
             <g transform="translate(70 150)">
-                <rect x="0" y="0" width="84" height="150" rx="18" fill="#0d1219" stroke={BLUE} strokeOpacity="0.7" strokeWidth="1.5" />
+                <rect x="0" y="0" width="84" height="150" rx="18" fill="#0f0f12" stroke={INK} strokeOpacity="0.35" strokeWidth="1.2" />
+                <rect x="7" y="20" width="70" height="104" rx="10" fill="url(#pv-screen-you)" />
                 <rect x="32" y="9" width="20" height="4" rx="2" fill={INK} fillOpacity="0.25" />
                 <Person x={42} y={78} color={BLUE} />
                 <text x="42" y="132" textAnchor="middle" fill={INK} fillOpacity="0.6" fontSize="11" fontFamily="var(--font-mono)">you</text>
@@ -81,8 +87,9 @@ export function PrivacyDiagramV2() {
 
             {/* Them: laptop */}
             <g transform="translate(478 156)">
-                <rect x="6" y="0" width="128" height="86" rx="10" fill="#0d1219" stroke={TEAL} strokeOpacity="0.7" strokeWidth="1.5" />
-                <path d="M-6 98 L 146 98 L 134 86 L 6 86 Z" fill="#0d1219" stroke={TEAL} strokeOpacity="0.5" strokeWidth="1.3" />
+                <rect x="6" y="0" width="128" height="86" rx="10" fill="#0f0f12" stroke={INK} strokeOpacity="0.35" strokeWidth="1.2" />
+                <rect x="13" y="7" width="114" height="72" rx="6" fill="url(#pv-screen-them)" />
+                <path d="M-6 98 L 146 98 L 134 86 L 6 86 Z" fill="#0f0f12" stroke={INK} strokeOpacity="0.3" strokeWidth="1.1" />
                 <Person x={70} y={50} color={TEAL} />
                 <text x="70" y="122" textAnchor="middle" fill={INK} fillOpacity="0.6" fontSize="11" fontFamily="var(--font-mono)">them</text>
             </g>
@@ -114,7 +121,7 @@ export function PrivacyDiagramV2() {
                         <animate attributeName="opacity" values="0.55;0" dur="3.6s" begin={`${d}s`} repeatCount="indefinite" />
                     </circle>
                 ))}
-                <path d="M0 -13 L 11 -8.5 V 0 C 11 7, 6 11.5, 0 14 C -6 11.5, -11 7, -11 0 V -8.5 Z" fill="#0b1118" stroke={CYAN} strokeWidth="1.4" filter="url(#pv-glow)" />
+                <path d="M0 -13 L 11 -8.5 V 0 C 11 7, 6 11.5, 0 14 C -6 11.5, -11 7, -11 0 V -8.5 Z" fill="#111114" stroke={CYAN} strokeWidth="1.4" filter="url(#pv-glow)" />
                 <path d="M-4.5 0.5 L -1 4 L 5 -3" fill="none" stroke={CYAN} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
             </g>
 
@@ -172,8 +179,8 @@ export function MessageJourney() {
 
     return (
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto_1fr_auto_1fr] sm:items-center">
-            <div className="rounded-2xl border border-[#f6d488]/30 bg-[#f6d488]/[0.05] px-3.5 py-2.5">
-                <p className="font-mono text-[9.5px] uppercase tracking-[0.18em] text-[#f6d488]/80">You type</p>
+            <div className="rounded-2xl border border-[#f2c14e]/30 bg-[#f2c14e]/[0.05] px-3.5 py-2.5">
+                <p className="font-mono text-[9.5px] uppercase tracking-[0.18em] text-[#f2c14e]/80">You type</p>
                 <p className="mt-1 h-[2.5rem] overflow-hidden text-[13px] leading-[1.25rem] text-paper">
                     {typed}
                     <span className="ml-0.5 inline-block h-3.5 w-px translate-y-0.5 animate-pulse bg-paper/70" />
@@ -182,11 +189,11 @@ export function MessageJourney() {
             <span className="hidden text-paper-faint sm:block" aria-hidden="true">→</span>
             <div className="rounded-2xl border border-paper/10 bg-ink-950/60 px-3.5 py-2.5">
                 <p className="font-mono text-[9.5px] uppercase tracking-[0.18em] text-paper-faint">On the way</p>
-                <p className="mt-1 h-[2.5rem] overflow-hidden break-all font-mono text-[12.5px] leading-[1.25rem] text-[#67e8f9]/80">{noise}</p>
+                <p className="mt-1 h-[2.5rem] overflow-hidden break-all font-mono text-[12.5px] leading-[1.25rem] text-paper-mute">{noise}</p>
             </div>
             <span className="hidden text-paper-faint sm:block" aria-hidden="true">→</span>
-            <div className="rounded-2xl border border-[#67e8f9]/30 bg-[#67e8f9]/[0.05] px-3.5 py-2.5">
-                <p className="font-mono text-[9.5px] uppercase tracking-[0.18em] text-[#67e8f9]/80">They read</p>
+            <div className="rounded-2xl border border-paper/20 bg-paper/[0.04] px-3.5 py-2.5">
+                <p className="font-mono text-[9.5px] uppercase tracking-[0.18em] text-paper-dim">They read</p>
                 <p className={`mt-1 h-[2.5rem] overflow-hidden text-[13px] leading-[1.25rem] text-paper transition-opacity duration-500 ${delivered ? 'opacity-100' : 'opacity-0'}`}>
                     {PHRASES[phrase]}
                 </p>
