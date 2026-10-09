@@ -136,9 +136,12 @@ export function GlobeHero() {
         }
 
         const render = (now: number) => {
-            smooth.x += (pointer.x - smooth.x) * 0.05
-            smooth.y += (pointer.y - smooth.y) * 0.05
-            if (!reduced) yaw += 0.0016
+            if (!reduced) {
+                smooth.x += (pointer.x - smooth.x) * 0.05
+                smooth.y += (pointer.y - smooth.y) * 0.05
+            }
+            // With Reduce Motion on, the globe still turns, just very slowly
+            yaw += reduced ? 0.0005 : 0.0016
 
             ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
             ctx.clearRect(0, 0, W, H)
@@ -184,7 +187,7 @@ export function GlobeHero() {
             }
 
             // New connection every so often
-            if (!reduced && now - lastSpawn > 1100 && arcs.length < 7) {
+            if (now - lastSpawn > (reduced ? 2600 : 1100) && arcs.length < (reduced ? 3 : 7)) {
                 spawnArc(now)
                 lastSpawn = now
             }
@@ -285,14 +288,7 @@ export function GlobeHero() {
             }
         }
 
-        if (reduced) {
-            // A still frame with a couple of connections for people who prefer less motion
-            const t0 = performance.now()
-            arcs.push({ a: 0, b: 1, born: t0 - 1500 }, { a: 10, b: 5, born: t0 - 1700 })
-            render(t0)
-        } else {
-            raf = requestAnimationFrame(frame)
-        }
+        raf = requestAnimationFrame(frame)
 
         return () => {
             cancelAnimationFrame(raf)

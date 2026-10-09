@@ -286,6 +286,8 @@ export class Lobby extends DurableObject<Env> {
         me.waitingSince = Date.now()
         this.save(ws, me)
         this.waiting.add(ws)
+        // Let the person know how busy it is (counts only, nothing about who)
+        this.send(ws, 'queue', { online: this.userIndex.size, searching: this.waiting.size })
     }
 
     private fileReport(ws: WebSocket, targetId: unknown) {

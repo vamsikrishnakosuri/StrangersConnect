@@ -446,3 +446,21 @@ html.lenis, html.lenis body {
   background: conic-gradient(from 200deg, #7cb4ff, #ff8fc8, #f2c14e, #7cb4ff);
   box-shadow: 0 0 22px rgba(255, 143, 200, 0.28);
 }
+
+/* Reduce Motion: keep the page alive with gentle fades instead of movement */
+@media (prefers-reduced-motion: reduce) {
+  .orbit-a, .orbit-b {
+    animation: soft-pulse 2.4s ease-in-out infinite !important;
+  }
+  .orbit-b {
+    animation-delay: 1.2s !important;
+  }
+  .breathe {
+    animation: soft-pulse 2.4s ease-in-out infinite !important;
+  }
+}
+
+@keyframes soft-pulse {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 1; }
+}

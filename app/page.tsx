@@ -115,6 +115,9 @@ export default function Home() {
     const [showSafety, setShowSafety] = useState(false)
     // Countdown to the next search after the other person leaves (null = off)
     const [autoNext, setAutoNext] = useState<number | null>(null)
+    // How busy it is while you wait, and whether the wait is getting long
+    const [queueInfo, setQueueInfo] = useState<{ online: number; searching: number } | null>(null)
+    const [slowSearch, setSlowSearch] = useState(false)
     // A message held back because it looks like personal info, waiting for "send anyway"
     const [pendingSend, setPendingSend] = useState<{ text: string; kinds: string[] } | null>(null)
     const [revealed, setRevealed] = useState<Set<string>>(new Set())
@@ -1673,6 +1676,10 @@ export default function Home() {
             setAutoNext(5)
         })
 
+        newSocket.on('queue', (data: { online: number; searching: number }) => {
+            if (typeof data?.online === 'number') setQueueInfo(data)
+        })
+
         newSocket.on('key-exchange', async (data: { publicKey: string; from: string }) => {
             if (data.from !== strangerIdRef.current) return
             try {
@@ -1913,6 +1920,14 @@ export default function Home() {
         return () => clearTimeout(t)
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [autoNext, isMatched, isSearching, callEnded])
+
+    // After a few seconds of searching, explain the wait instead of looking stuck
+    useEffect(() => {
+        setSlowSearch(false)
+        if (!isSearching) return
+        const t = setTimeout(() => setSlowSearch(true), 7000)
+        return () => clearTimeout(t)
+    }, [isSearching])
 
     const toggleSafeStart = (on: boolean) => {
         setSafeStart(on)
@@ -2803,7 +2818,17 @@ export default function Home() {
                     <h2 className="mt-3 font-serif text-4xl sm:text-5xl">
                         Finding <em className="text-glow-soft">someone new…</em>
                     </h2>
-                    <p className="mt-4 max-w-sm text-paper-mute">This usually takes a few seconds. Keep this tab open.</p>
+                    <p className="mt-4 max-w-sm text-paper-mute">
+                        {slowSearch && (queueInfo?.searching ?? 1) <= 1
+                            ? 'Nobody else is searching right now. Stay here and you will be connected the moment someone joins.'
+                            : 'This usually takes a few seconds. Keep this tab open.'}
+                    </p>
+                    {queueInfo && (
+                        <p className="mt-3 inline-flex items-center gap-2 rounded-full border border-paper/10 px-3 py-1 font-mono text-[11px] text-paper-mute">
+                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 breathe" />
+                            {queueInfo.online} {queueInfo.online === 1 ? 'person' : 'people'} online
+                        </p>
+                    )}
                     {lastPeer && (
                         <div className="mt-8">
                             <RematchQuestion answer={rematchAnswer} onAnswer={answerRematch} />
