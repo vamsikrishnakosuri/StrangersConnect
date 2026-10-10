@@ -531,7 +531,7 @@ html.lenis, html.lenis body {
   .vanish-bubble { opacity: 1; }
 }
 
-/* 3D orbs hero: labels that ride above each orb, and a CSS stand-in without WebGL */
+/* 3D hero: labels and the travelling word that ride over the scene */
 .orb-label,
 .orb-hi {
     position: absolute;
@@ -556,8 +556,4 @@ html.lenis, html.lenis body {
     color: #f6d488;
     text-shadow: 0 0 18px rgba(242, 193, 78, 0.55);
 }
-.orbs-hero[data-fallback='true'] {
-    background:
-        radial-gradient(circle at 38% 52%, rgba(242, 193, 78, 0.55) 0, rgba(242, 193, 78, 0.12) 13%, transparent 22%),
-        radial-gradient(circle at 62% 50%, rgba(115, 235, 242, 0.45) 0, rgba(115, 235, 242, 0.1) 12%, transparent 21%);
-}
+

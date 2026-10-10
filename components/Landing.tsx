@@ -3,7 +3,7 @@
 import { FAQ } from '@/lib/site'
 import { LineIcon } from './Illustrations'
 import { MessageJourney, PrivacyDiagramV2 } from './PrivacyVisual'
-import { OrbsHero } from './OrbsHero'
+import { CupsHero } from './CupsHero'
 import { NoiseField } from './NoiseField'
 import ScrollScenes from './ScrollScenes'
 
@@ -66,7 +66,7 @@ export default function Landing({ onStart, isConnected }: Props) {
                     </div>
                     <div className="rise mx-auto mt-10 sm:mt-6 max-w-[620px]" style={{ ['--delay' as string]: '0.2s' }}>
                         <div data-anim="hero-art" className="origin-center">
-                            <OrbsHero />
+                            <CupsHero />
                         </div>
                     </div>
                 </div>
