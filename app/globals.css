@@ -692,3 +692,39 @@ html.lenis, html.lenis body {
     .eye-chip span { min-width: 7.6em; }
     .eye-chip.is-probing span { font-size: 10px; }
 }
+
+/* Micro-interactions: a light sweep across the main button, a spotlight on the stats */
+.btn-sheen { position: relative; overflow: hidden; isolation: isolate; }
+.btn-sheen::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background: linear-gradient(105deg, transparent 35%, rgba(255, 255, 255, 0.45) 50%, transparent 65%);
+    transform: translateX(-120%);
+    animation: sheen 5.5s ease-in-out 2s infinite;
+    pointer-events: none;
+}
+@keyframes sheen {
+    0%, 70% { transform: translateX(-120%); }
+    85%, 100% { transform: translateX(120%); }
+}
+.stat-cell {
+    position: relative;
+    transition: background-color 0.4s ease;
+}
+.stat-cell::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(220px circle at var(--mx, 50%) var(--my, 50%), rgba(242, 193, 78, 0.09), transparent 70%);
+    opacity: 0;
+    transition: opacity 0.4s ease;
+    pointer-events: none;
+}
+.stat-cell:hover::before { opacity: 1; }
+.stat-cell > p:first-child { transition: transform 0.4s cubic-bezier(0.2, 0.8, 0.2, 1), color 0.4s ease; }
+.stat-cell:hover > p:first-child { transform: translateY(-2px); color: #f6d488; }
+@media (prefers-reduced-motion: reduce) {
+    .btn-sheen::after { animation: none; }
+}

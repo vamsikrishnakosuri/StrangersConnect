@@ -35,11 +35,11 @@ export default function ScrollScenes() {
                 mm.add('(min-width: 768px)', () => {
                     const tl = gsap.timeline({
                         defaults: { ease: 'none' },
-                        scrollTrigger: { trigger: '[data-scene="hero"]', start: 'top top', end: '+=85%', scrub: 0.8, pin: true, anticipatePin: 1 },
+                        scrollTrigger: { trigger: '[data-scene="hero"]', start: 'top top', end: '+=85%', scrub: 0.8, pin: true },
                     })
                     // 1. Text drifts away while the scene zooms toward you
                     tl.to('[data-anim="hero-text"]', { y: -90, opacity: 0, duration: 0.35 }, 0)
-                        .to('[data-anim="hero-art"]', { scale: 1.55, y: -60, force3D: false, duration: 1 }, 0)
+                        .to('[data-anim="hero-art"]', { scale: 1.3, y: -40, force3D: false, duration: 1 }, 0)
                         // 2. The gradient field drifts up and opens out
                         .to('[data-anim="field"]', { scale: 1.25, yPercent: -8, duration: 1 }, 0)
                 })
@@ -68,7 +68,7 @@ export default function ScrollScenes() {
                     color: '#ece9e2',
                     stagger: 0.12,
                     ease: 'none',
-                    scrollTrigger: { trigger: '[data-scene="statement"]', start: 'top top', end: '+=75%', scrub: 0.6, pin: true, anticipatePin: 1 },
+                    scrollTrigger: { trigger: '[data-scene="statement"]', start: 'top top', end: '+=75%', scrub: 0.6, pin: true },
                 })
 
                 // How it works: a glowing line sweeps across, then each step rises
@@ -108,7 +108,6 @@ export default function ScrollScenes() {
                             end: '+=' + items.length * 38 + '%',
                             scrub: 0.7,
                             pin: true,
-                            anticipatePin: 1,
                             invalidateOnRefresh: true,
                         },
                     })
@@ -167,7 +166,7 @@ export default function ScrollScenes() {
                         return { x: cx - (r.left + r.width / 2), y: cy - (r.top + r.height / 2) }
                     })
                     const tl = gsap.timeline({
-                        scrollTrigger: { trigger: '[data-scene="features"]', start: 'top top', end: '+=95%', scrub: 0.9, pin: true, anticipatePin: 1 },
+                        scrollTrigger: { trigger: '[data-scene="features"]', start: 'top top', end: '+=95%', scrub: 0.9, pin: true },
                     })
                     // Deal from the top of the stack (the last card) downward
                     cards
@@ -205,6 +204,36 @@ export default function ScrollScenes() {
                 })
             })
 
+            // Magnetic buttons: they lean a little toward the pointer, then spring back
+            const magnets = gsap.utils.toArray<HTMLElement>('[data-magnetic]')
+            const fine = window.matchMedia('(pointer: fine)').matches
+            const magnetOff: (() => void)[] = []
+            if (fine) {
+                magnets.forEach((el) => {
+                    const move = (e: PointerEvent) => {
+                        const r = el.getBoundingClientRect()
+                        gsap.to(el, { x: (e.clientX - r.left - r.width / 2) * 0.25, y: (e.clientY - r.top - r.height / 2) * 0.35, duration: 0.4, ease: 'power3.out' })
+                    }
+                    const leave = () => gsap.to(el, { x: 0, y: 0, duration: 0.7, ease: 'elastic.out(1, 0.4)' })
+                    el.addEventListener('pointermove', move)
+                    el.addEventListener('pointerleave', leave)
+                    magnetOff.push(() => {
+                        el.removeEventListener('pointermove', move)
+                        el.removeEventListener('pointerleave', leave)
+                    })
+                })
+            }
+
+            // Spotlight cards: a soft light follows the pointer across them
+            const lit = gsap.utils.toArray<HTMLElement>('[data-spotlight]')
+            const spot = (e: PointerEvent) => {
+                const el = e.currentTarget as HTMLElement
+                const r = el.getBoundingClientRect()
+                el.style.setProperty('--mx', `${e.clientX - r.left}px`)
+                el.style.setProperty('--my', `${e.clientY - r.top}px`)
+            }
+            lit.forEach((el) => el.addEventListener('pointermove', spot))
+
             // Fonts, images and live content can shift layout: keep scroll positions in sync
             let refreshTimer: ReturnType<typeof setTimeout> | null = null
             const refresh = () => {
@@ -224,6 +253,8 @@ export default function ScrollScenes() {
             document.fonts?.ready.then(refresh)
 
             cleanup = () => {
+                magnetOff.forEach((off) => off())
+                lit.forEach((el) => el.removeEventListener('pointermove', spot))
                 heightWatch.disconnect()
                 if (refreshTimer) clearTimeout(refreshTimer)
                 window.removeEventListener('load', refresh)

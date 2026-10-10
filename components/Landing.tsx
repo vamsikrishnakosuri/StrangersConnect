@@ -21,7 +21,8 @@ function StartButton({ onStart, isConnected, size = 'lg' }: Props & { size?: 'lg
         <button
             onClick={onStart}
             disabled={!isConnected}
-            className={`btn-primary ${size === 'lg' ? 'px-7 py-3.5 text-[15px]' : 'px-5 py-2.5 text-sm'}`}
+            data-magnetic
+            className={`btn-primary btn-sheen ${size === 'lg' ? 'px-7 py-3.5 text-[15px]' : 'px-5 py-2.5 text-sm'}`}
         >
             <span className="relative flex h-2 w-2">
                 <span className={`absolute inline-flex h-full w-full rounded-full ${isConnected ? 'bg-glow animate-ping opacity-60' : 'bg-paper-faint'}`} />
@@ -58,7 +59,7 @@ export default function Landing({ onStart, isConnected }: Props) {
                     </p>
                     <div className="rise mt-9 flex flex-col sm:flex-row items-center justify-center gap-3" style={{ ['--delay' as string]: '0.24s' }}>
                         <StartButton onStart={onStart} isConnected={isConnected} />
-                        <a href="#how" className="btn-ghost px-6 py-3.5 text-[15px]">See how it works</a>
+                        <a href="#how" data-magnetic className="btn-ghost px-6 py-3.5 text-[15px]">See how it works</a>
                     </div>
                     <p className="rise mt-5 font-mono text-[11px] text-paper-faint" style={{ ['--delay' as string]: '0.3s' }}>
                         Works in any browser on desktop, iPhone and Android · 18+
@@ -73,7 +74,7 @@ export default function Landing({ onStart, isConnected }: Props) {
             </section>
 
             {/* Trust strip */}
-            <section aria-label="At a glance" className="border-y border-paper/10">
+            <section aria-label="At a glance" className="relative z-10 border-y border-paper/10 bg-ink-900">
                 <ul className="mx-auto max-w-page px-4 sm:px-6 grid grid-cols-2 md:grid-cols-4">
                     {[
                         ['Private', 'Only the two of you can see the call'],
@@ -81,7 +82,7 @@ export default function Landing({ onStart, isConnected }: Props) {
                         ['1 click', 'To skip to the next person'],
                         ['0', 'Messages or calls stored, ever'],
                     ].map(([k, v], i) => (
-                        <li key={k} data-anim="stat" className={`py-7 px-4 sm:px-6 ${i > 0 ? 'md:border-l' : ''} ${i % 2 === 1 ? 'border-l' : ''} ${i > 1 ? 'border-t md:border-t-0' : ''} border-paper/10`}>
+                        <li key={k} data-anim="stat" data-spotlight className={`stat-cell py-7 px-4 sm:px-6 ${i > 0 ? 'md:border-l' : ''} ${i % 2 === 1 ? 'border-l' : ''} ${i > 1 ? 'border-t md:border-t-0' : ''} border-paper/10`}>
                             <p className="font-serif text-3xl text-paper">{k}</p>
                             <p className="mt-1 text-sm text-paper-mute">{v}</p>
                         </li>
@@ -91,7 +92,7 @@ export default function Landing({ onStart, isConnected }: Props) {
 
             {/* Statement: words light up as you scroll */}
             <section data-scene="statement" className="relative flex min-h-[100svh] items-center">
-                <div className="mx-auto w-full max-w-page px-4 sm:px-6 py-24">
+                <div className="mx-auto w-full max-w-page px-4 sm:px-6 pt-36 pb-24 sm:pt-44">
                     <p className="font-serif text-[clamp(2.1rem,5.6vw,4.6rem)] leading-[1.06] tracking-[-0.015em] max-w-5xl">
                         {'Two strangers. One click. A real conversation, sent straight between you. Nothing stored. Nothing sold. Nothing in between.'
                             .split(' ')
