@@ -4,6 +4,8 @@ import { useEffect } from 'react'
 
 // Scroll-driven scenes for the landing page, in the spirit of Apple and Wispr Flow:
 // smooth scrolling (Lenis, MIT) plus scrubbed animations (GSAP ScrollTrigger, free license).
+// Nothing is pinned by JavaScript: sections that hold still use CSS position: sticky inside
+// a tall section, so they can never land on top of each other when the layout shifts.
 // Everything is skipped for people who ask their device for reduced motion.
 export default function ScrollScenes() {
     useEffect(() => {
@@ -31,44 +33,34 @@ export default function ScrollScenes() {
             const ctx = gsap.context(() => {
                 const mm = gsap.matchMedia()
 
-                // Hero: on larger screens the scene zooms toward you as you scroll past (no pin, so nothing can overlap)
-                mm.add('(min-width: 768px)', () => {
-                    const tl = gsap.timeline({
-                        defaults: { ease: 'none' },
-                        scrollTrigger: { trigger: '[data-scene="hero"]', start: 'top top', end: 'bottom top', scrub: 0.8 },
-                    })
-                    // 1. Text drifts away while the scene zooms toward you
-                    tl.to('[data-anim="hero-text"]', { y: -90, opacity: 0, duration: 0.35 }, 0)
-                        .to('[data-anim="hero-art"]', { scale: 1.3, y: -40, force3D: false, duration: 1 }, 0)
-                        // 2. The gradient field drifts up and opens out
-                        .to('[data-anim="field"]', { scale: 1.25, yPercent: -8, duration: 1 }, 0)
+                // Hero: the headline drifts up and away while the 3D scene zooms (the scene
+                // reads its own scroll position, so only the text and the field are animated here)
+                gsap.timeline({
+                    defaults: { ease: 'none' },
+                    scrollTrigger: { trigger: '[data-scene="hero"]', start: 'top top', end: 'bottom bottom', scrub: 0.6 },
                 })
-                mm.add('(max-width: 767px)', () => {
-                    gsap.to('[data-anim="hero-art"]', {
-                        force3D: false,
-                        scale: 1.12,
-                        y: -30,
-                        ease: 'none',
-                        scrollTrigger: { trigger: '[data-scene="hero"]', start: 'center center', end: 'bottom top', scrub: true },
-                    })
-                })
+                    .to('[data-anim="hero-text"]', { y: -140, opacity: 0, duration: 0.3 }, 0)
+                    .to('[data-anim="field"]', { scale: 1.3, yPercent: -6, duration: 1 }, 0)
 
-                gsap.from('[data-anim="stat"]', {
-                    y: 24,
+                // At a glance: the cards flip up from lying flat, one after another
+                gsap.from('[data-anim="glance"]', {
+                    rotateX: 55,
+                    y: 90,
                     opacity: 0,
-                    duration: 0.9,
-                    stagger: 0.1,
+                    transformOrigin: '50% 100%',
+                    duration: 1.1,
+                    stagger: 0.12,
                     ease: 'power3.out',
-                    scrollTrigger: { trigger: '[data-anim="stat"]', start: 'top 85%' },
+                    scrollTrigger: { trigger: '[data-anim="glance"]', start: 'top 92%' },
                 })
 
-                // Statement: each word brightens in turn as the line scrolls into view
+                // Statement: the line holds still (sticky) while each word fills in turn
                 const words = gsap.utils.toArray<HTMLElement>('[data-anim="word"]')
                 gsap.to(words, {
                     color: '#ece9e2',
                     stagger: 0.12,
                     ease: 'none',
-                    scrollTrigger: { trigger: '[data-scene="statement"]', start: 'top 80%', end: 'center 45%', scrub: 0.6 },
+                    scrollTrigger: { trigger: '[data-scene="statement"]', start: 'top top', end: 'bottom bottom', scrub: 0.5 },
                 })
 
                 // How it works: a glowing line sweeps across, then each step rises
@@ -86,74 +78,56 @@ export default function ScrollScenes() {
                     scrollTrigger: { trigger: '[data-scene="how"]', start: 'top 60%' },
                 })
 
-                // Privacy: the diagram glides in and settles while the points appear
-                gsap.from('[data-anim="diagram"]', {
-                    scale: 0.88,
-                    y: 60,
-                    opacity: 0,
+                // Privacy rises out of the glass: it starts large and blurred, then settles into focus
+                gsap.fromTo('[data-anim="emerge"]', { opacity: 0, scale: 1.18, filter: 'blur(16px)' }, {
+                    opacity: 1,
+                    scale: 1,
+                    filter: 'blur(0px)',
                     ease: 'none',
-                    scrollTrigger: { trigger: '[data-scene="privacy"]', start: 'top 85%', end: 'center 60%', scrub: 0.8 },
+                    scrollTrigger: { trigger: '[data-anim="emerge"]', start: 'top 95%', end: 'top 30%', scrub: 0.8 },
                 })
-                // Privacy promises: on wide screens each one in turn zooms to the centre,
-                // sits on a soft card, then settles back into its place in the row
-                mm.add('(min-width: 1024px)', () => {
-                    const items = gsap.utils.toArray<HTMLElement>('[data-anim="pillar"]')
-                    const row = document.querySelector<HTMLElement>('[data-scene="pillars"]')
-                    if (!row || !items.length) return
-                    const tl = gsap.timeline({
-                        defaults: { ease: 'power2.inOut' },
+                // ...and the diagram tilts up from lying back as it comes into view
+                gsap.fromTo('[data-anim="diagram"]', { rotateX: 32, scale: 0.86, y: 70, transformOrigin: '50% 100%' }, {
+                    rotateX: 0,
+                    scale: 1,
+                    y: 0,
+                    ease: 'none',
+                    scrollTrigger: { trigger: '[data-anim="diagram"]', start: 'top 100%', end: 'top 35%', scrub: 0.8 },
+                })
+
+                // Promises: the row of cards slides sideways while the section holds still;
+                // each card turns in 3D as it passes the middle of the screen
+                const track = document.querySelector<HTMLElement>('[data-anim="pillar-track"]')
+                const pillars = gsap.utils.toArray<HTMLElement>('[data-anim="pillar"]')
+                if (track && pillars.length) {
+                    const shift = () => Math.max(0, track.scrollWidth - window.innerWidth)
+                    const turn = () => {
+                        const mid = window.innerWidth / 2
+                        pillars.forEach((card) => {
+                            const r = card.getBoundingClientRect()
+                            const off = (r.left + r.width / 2 - mid) / window.innerWidth
+                            const a = Math.max(-1, Math.min(1, off * 1.6))
+                            gsap.set(card, { rotateY: -a * 28, z: -Math.abs(a) * 120, opacity: 1 - Math.abs(a) * 0.35 })
+                        })
+                    }
+                    gsap.to(track, {
+                        x: () => -shift(),
+                        ease: 'none',
                         scrollTrigger: {
-                            trigger: row,
-                            start: 'center 55%',
-                            end: '+=' + items.length * 38 + '%',
-                            scrub: 0.7,
-                            pin: true,
+                            trigger: '[data-scene="pillars"]',
+                            start: 'top top',
+                            end: 'bottom bottom',
+                            scrub: 0.6,
                             invalidateOnRefresh: true,
+                            onUpdate: turn,
+                            onRefresh: turn,
                         },
                     })
-                    items.forEach((el, i) => {
-                        const card = el.querySelector('[data-anim="pillar-card"]')
-                        const others = items.filter((o) => o !== el)
-                        const toCentre = () => {
-                            const r = el.getBoundingClientRect()
-                            const rr = row.getBoundingClientRect()
-                            return rr.left + rr.width / 2 - (r.left + r.width / 2)
-                        }
-                        tl.to(el, { x: toCentre, y: -30, scale: 1.45, zIndex: 5, duration: 1 }, i * 2)
-                            .to(card, { opacity: 1, duration: 0.6 }, i * 2 + 0.2)
-                            .to(others, { opacity: 0.18, duration: 0.6 }, i * 2)
-                            .to(el, { x: 0, y: 0, scale: 1, duration: 1 }, i * 2 + 1.3)
-                            .to(card, { opacity: 0, duration: 0.5 }, i * 2 + 1.3)
-                            .to(others, { opacity: 1, duration: 0.6 }, i * 2 + 1.4)
-                            .set(el, { zIndex: 0 }, i * 2 + 2.3)
-                    })
-                })
-                mm.add('(max-width: 1023px)', () => {
-                    gsap.utils.toArray<HTMLElement>('[data-anim="pillar"]').forEach((el) => {
-                        gsap.from(el, { y: 30, opacity: 0, duration: 0.8, ease: 'power3.out', scrollTrigger: { trigger: el, start: 'top 88%' } })
-                    })
-                })
+                    turn()
+                }
 
-                // Privacy tiles fade in as they enter the screen (simple and robust)
-                const tiles = gsap.utils.toArray<HTMLElement>('[data-anim="bullet"]')
-                tiles.forEach((el, i) => {
-                    el.classList.add('reveal-item')
-                    el.style.transitionDelay = `${(i % 2) * 80 + Math.floor(i / 2) * 90}ms`
-                })
-                const tileObserver = new IntersectionObserver(
-                    (entries) =>
-                        entries.forEach((e) => {
-                            if (e.isIntersecting) {
-                                e.target.classList.add('is-in')
-                                tileObserver.unobserve(e.target)
-                            }
-                        }),
-                    { threshold: 0.2 },
-                )
-                tiles.forEach((el) => tileObserver.observe(el))
-
-                // Features: the cards start as a stacked deck in the middle, then deal out
-                // one after another into the grid while the section is held in place
+                // Features: the cards start as a stacked deck, then deal out into the grid
+                // as the section scrolls into view (no pinning)
                 mm.add('(min-width: 640px)', () => {
                     const deck = document.querySelector<HTMLElement>('[data-anim="deck"]')
                     const cards = gsap.utils.toArray<HTMLElement>('[data-anim="card"]')
@@ -166,9 +140,8 @@ export default function ScrollScenes() {
                         return { x: cx - (r.left + r.width / 2), y: cy - (r.top + r.height / 2) }
                     })
                     const tl = gsap.timeline({
-                        scrollTrigger: { trigger: '[data-scene="features"]', start: 'top top', end: '+=95%', scrub: 0.9, pin: true },
+                        scrollTrigger: { trigger: deck, start: 'top 85%', end: 'top 15%', scrub: 0.9 },
                     })
-                    // Deal from the top of the stack (the last card) downward
                     cards
                         .map((card, i) => ({ card, i }))
                         .reverse()
@@ -177,7 +150,7 @@ export default function ScrollScenes() {
                                 card,
                                 { x: offsets[i].x, y: offsets[i].y + i * -4, rotation: (i - 2.5) * 3.2, scale: 0.92 },
                                 { x: 0, y: 0, rotation: 0, scale: 1, ease: 'power2.inOut', duration: 1 },
-                                order * 0.55,
+                                order * 0.45,
                             )
                         })
                 })
@@ -205,11 +178,10 @@ export default function ScrollScenes() {
             })
 
             // Magnetic buttons: they lean a little toward the pointer, then spring back
-            const magnets = gsap.utils.toArray<HTMLElement>('[data-magnetic]')
             const fine = window.matchMedia('(pointer: fine)').matches
-            const magnetOff: (() => void)[] = []
+            const offs: (() => void)[] = []
             if (fine) {
-                magnets.forEach((el) => {
+                gsap.utils.toArray<HTMLElement>('[data-magnetic]').forEach((el) => {
                     const move = (e: PointerEvent) => {
                         const r = el.getBoundingClientRect()
                         gsap.to(el, { x: (e.clientX - r.left - r.width / 2) * 0.25, y: (e.clientY - r.top - r.height / 2) * 0.35, duration: 0.4, ease: 'power3.out' })
@@ -217,22 +189,35 @@ export default function ScrollScenes() {
                     const leave = () => gsap.to(el, { x: 0, y: 0, duration: 0.7, ease: 'elastic.out(1, 0.4)' })
                     el.addEventListener('pointermove', move)
                     el.addEventListener('pointerleave', leave)
-                    magnetOff.push(() => {
+                    offs.push(() => {
+                        el.removeEventListener('pointermove', move)
+                        el.removeEventListener('pointerleave', leave)
+                    })
+                })
+
+                // Tilt cards: they turn toward the pointer with a moving glare
+                gsap.utils.toArray<HTMLElement>('[data-tilt]').forEach((el) => {
+                    const move = (e: PointerEvent) => {
+                        const r = el.getBoundingClientRect()
+                        const px = (e.clientX - r.left) / r.width
+                        const py = (e.clientY - r.top) / r.height
+                        el.style.setProperty('--rx', `${((0.5 - py) * 14).toFixed(2)}deg`)
+                        el.style.setProperty('--ry', `${((px - 0.5) * 16).toFixed(2)}deg`)
+                        el.style.setProperty('--gx', `${(px * 100).toFixed(1)}%`)
+                        el.style.setProperty('--gy', `${(py * 100).toFixed(1)}%`)
+                    }
+                    const leave = () => {
+                        el.style.setProperty('--rx', '0deg')
+                        el.style.setProperty('--ry', '0deg')
+                    }
+                    el.addEventListener('pointermove', move)
+                    el.addEventListener('pointerleave', leave)
+                    offs.push(() => {
                         el.removeEventListener('pointermove', move)
                         el.removeEventListener('pointerleave', leave)
                     })
                 })
             }
-
-            // Spotlight cards: a soft light follows the pointer across them
-            const lit = gsap.utils.toArray<HTMLElement>('[data-spotlight]')
-            const spot = (e: PointerEvent) => {
-                const el = e.currentTarget as HTMLElement
-                const r = el.getBoundingClientRect()
-                el.style.setProperty('--mx', `${e.clientX - r.left}px`)
-                el.style.setProperty('--my', `${e.clientY - r.top}px`)
-            }
-            lit.forEach((el) => el.addEventListener('pointermove', spot))
 
             // Fonts, images and live content can shift layout: keep scroll positions in sync
             let refreshTimer: ReturnType<typeof setTimeout> | null = null
@@ -240,7 +225,6 @@ export default function ScrollScenes() {
                 if (refreshTimer) clearTimeout(refreshTimer)
                 refreshTimer = setTimeout(() => ScrollTrigger.refresh(), 150)
             }
-            // Pinned sections get fixed-height spacers, so watch each section too, not just the page
             const sizes = new Map<Element, number>()
             const heightWatch = new ResizeObserver((entries) => {
                 let changed = false
@@ -254,13 +238,12 @@ export default function ScrollScenes() {
                 if (changed) refresh()
             })
             heightWatch.observe(document.body)
-            document.querySelectorAll('[data-scene], [data-scene] > *').forEach((el) => heightWatch.observe(el))
+            document.querySelectorAll('[data-scene]').forEach((el) => heightWatch.observe(el))
             window.addEventListener('load', refresh)
             document.fonts?.ready.then(refresh)
 
             cleanup = () => {
-                magnetOff.forEach((off) => off())
-                lit.forEach((el) => el.removeEventListener('pointermove', spot))
+                offs.forEach((off) => off())
                 heightWatch.disconnect()
                 if (refreshTimer) clearTimeout(refreshTimer)
                 window.removeEventListener('load', refresh)

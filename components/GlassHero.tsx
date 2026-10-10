@@ -6,7 +6,8 @@ import { LogoMark } from './Logo'
 // The S from the logo as a liquid-glass sculpture, telling the story of a private message:
 // you say hi, it scrambles and locks as it enters the glass, travels sealed, an onlooker
 // tries to listen and gets only noise, and it unlocks as "hi" for the other person.
-// Drag to spin it, tap to send a new message. three.js loads only with this scene.
+// Drag to spin it, tap to send a new message. As the page scrolls, the camera flies
+// toward the glass and into it. three.js loads only with this scene.
 
 const GREETINGS = ['hi', 'hola', 'bonjour', 'namaste', 'ciao', 'hallo', 'olá', 'merhaba', 'salut', 'hey', 'konnichiwa', 'jambo']
 // One message, in seconds: lock, travel sealed, unlock, rest
@@ -28,6 +29,8 @@ export function GlassHero() {
     const eyeTextRef = useRef<HTMLSpanElement>(null)
     const probeRef = useRef<SVGLineElement>(null)
     const probeTipRef = useRef<SVGCircleElement>(null)
+    const overlayRef = useRef<HTMLDivElement>(null)
+    const chipRef = useRef<HTMLDivElement>(null)
     const [fallback, setFallback] = useState(false)
 
     useEffect(() => {
@@ -51,7 +54,7 @@ export function GlassHero() {
             }
             const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
             const coarse = window.matchMedia('(pointer: coarse)').matches
-            renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, coarse ? 1.5 : 2))
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, coarse ? 1.25 : 1.6))
             renderer.outputColorSpace = THREE.SRGBColorSpace
             renderer.toneMapping = THREE.ACESFilmicToneMapping
             renderer.toneMappingExposure = 1.0
@@ -138,11 +141,47 @@ export function GlassHero() {
             )
             const R = 0.2
             sculpture.add(new THREE.Mesh(keep(new THREE.TubeGeometry(curve, 420, R, coarse ? 32 : 48, false)), glass))
+            // Paper-cup cones at both ends, like the logo: flared glass horns with an amber rim
+            // and a light inside that glows when a message leaves or arrives
+            const coneLen = 0.78
+            const coneR = 0.5
+            const profile: InstanceType<typeof THREE.Vector2>[] = []
+            for (let i = 0; i <= 18; i++) {
+                const k = i / 18
+                profile.push(new THREE.Vector2(R * 0.92 + (coneR - R * 0.92) * Math.pow(k, 1.5), k * coneLen))
+            }
+            const coneGeo = keep(new THREE.LatheGeometry(profile, 72))
+            const coneGlass = keep(glass.clone())
+            coneGlass.side = THREE.DoubleSide
+            const rimGeo = keep(new THREE.TorusGeometry(coneR, 0.026, 16, 96))
+            const rimMat = keep(new THREE.MeshPhysicalMaterial({ color: 0xf2c14e, roughness: 0.25, metalness: 0.3, clearcoat: 1, emissive: AMBER, emissiveIntensity: 0.25 }))
             const capGeo = keep(new THREE.SphereGeometry(R, 48, 32))
+            const voiceGeo = keep(new THREE.CircleGeometry(coneR * 0.9, 48))
+            const mouths: InstanceType<typeof THREE.Vector3>[] = []
+            const voices: InstanceType<typeof THREE.MeshBasicMaterial>[] = []
             for (const u of [0, 1]) {
+                const at = curve.getPointAt(u)
+                const out = curve.getTangentAt(u)
+                if (u === 0) out.negate()
+                const cone = new THREE.Group()
+                cone.position.copy(at)
+                cone.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), out)
+                cone.add(new THREE.Mesh(coneGeo, coneGlass))
+                const rimRing = new THREE.Mesh(rimGeo, rimMat)
+                rimRing.rotation.x = Math.PI / 2
+                rimRing.position.y = coneLen
+                cone.add(rimRing)
+                const vm = keep(new THREE.MeshBasicMaterial({ map: null, color: 0xffc35a, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }))
+                const voice = new THREE.Mesh(voiceGeo, vm)
+                voice.rotation.x = -Math.PI / 2
+                voice.position.y = coneLen * 0.82
+                cone.add(voice)
+                voices.push(vm)
+                sculpture.add(cone)
                 const cap = new THREE.Mesh(capGeo, glass)
-                cap.position.copy(curve.getPointAt(u))
+                cap.position.copy(at)
                 sculpture.add(cap)
+                mouths.push(at.clone().addScaledVector(out, coneLen))
             }
 
             // The light inside: a thin core with a message pulse running through it
@@ -260,18 +299,54 @@ export function GlassHero() {
             pool.position.y = -1.31
             root.add(pool)
 
+            // Scroll-driven camera: the S starts below the headline, then the camera flies
+            // toward it and into the glass as the hero scrolls by
+            const section = wrap.closest('[data-scene="hero"]') as HTMLElement | null
+            const stage = section?.firstElementChild as HTMLElement | null
+            const textEl = section?.querySelector('[data-anim="hero-text"]') as HTMLElement | null
+            let textBottom = 0
+            const measureText = () => {
+                if (!textEl) return wrap.clientHeight * 0.45
+                let y = 0
+                let el: HTMLElement | null = textEl
+                while (el && el !== stage) {
+                    y += el.offsetTop
+                    el = el.offsetParent as HTMLElement | null
+                }
+                return y + textEl.offsetHeight
+            }
+            const scrollProgress = () => {
+                if (!section) return 0
+                const span = section.offsetHeight - window.innerHeight
+                return span > 0 ? Math.min(1, Math.max(0, -section.getBoundingClientRect().top / span)) : 0
+            }
+            let zoomS = 0
+            // Two acts: the S rises to the middle at full view, then the camera flies into the glass
+            const frame = (rise: number, z: number) => {
+                const W = wrap.clientWidth
+                const H = wrap.clientHeight
+                const tanH = Math.tan((camera.fov * Math.PI) / 360)
+                // Start: just below the headline, peeking up from the bottom of the screen if it must
+                const free = H - textBottom - 24
+                const ppu0 = Math.min((W * 0.94) / 3.4, Math.max(free / 3.0, H * 0.17))
+                const ppuMid = Math.min((W * 0.9) / 3.4, (H * 0.78) / 3.0)
+                const ppu1 = H * 1.0
+                const cy0 = textBottom + 24 + 1.45 * ppu0
+                const ppu = (ppu0 + (ppuMid - ppu0) * rise) * Math.pow(ppu1 / ppuMid, z)
+                const cy = cy0 + (H / 2 - cy0) * rise
+                camera.position.set(0, 0, H / (2 * ppu * tanH))
+                camera.lookAt(0, 0, 0)
+                camera.setViewOffset(W, H, 0, H / 2 - cy, W, H)
+                camera.updateProjectionMatrix()
+            }
+
             const fit = () => {
                 const w = wrap.clientWidth
                 const h = wrap.clientHeight
                 if (!w || !h) return
                 renderer.setSize(w, h, false)
                 camera.aspect = w / h
-                const vFov = (camera.fov * Math.PI) / 180
-                const distH = (w < 520 ? 3.9 : 3.5) / 2 / Math.tan(vFov / 2)
-                const distW = (w < 520 ? 4.3 : 3.3) / 2 / (Math.tan(vFov / 2) * camera.aspect)
-                camera.position.set(0, 0.1, Math.max(distH, distW))
-                camera.lookAt(0, -0.05, 0)
-                camera.updateProjectionMatrix()
+                textBottom = measureText()
                 render(performance.now())
             }
 
@@ -324,8 +399,19 @@ export function GlassHero() {
             const clock = () => (performance.now() - startTime) / 1000
             const v = new THREE.Vector3()
             const head = new THREE.Vector3()
-            const startPoint = curve.getPointAt(0)
-            const endPoint = curve.getPointAt(1)
+            const lift = new THREE.Vector3()
+            const mouthUp = (i: number) => lift.copy(mouths[i]).add(new THREE.Vector3(0, 0.55, 0))
+            const anchor = new THREE.Vector3()
+            const placeChip = (el: HTMLElement | null, x: number, y: number, z: number) => {
+                if (!el) return
+                anchor.set(x, y, z).project(camera)
+                const W = wrap.clientWidth
+                const sx = ((anchor.x + 1) / 2) * W
+                const sy = ((1 - anchor.y) / 2) * wrap.clientHeight
+                const left = Math.min(W - el.offsetWidth - 8, Math.max(8, sx - el.offsetWidth / 2))
+                el.style.left = `${left.toFixed(1)}px`
+                el.style.top = `${(sy - el.offsetHeight / 2).toFixed(1)}px`
+            }
             const toScreen = (p: InstanceType<typeof THREE.Vector3>) => {
                 v.copy(p).applyMatrix4(sculpture.matrixWorld).project(camera)
                 return [((v.x + 1) / 2) * wrap.clientWidth, ((1 - v.y) / 2) * wrap.clientHeight]
@@ -360,8 +446,15 @@ export function GlassHero() {
                 }
                 lean.x += (target.x - lean.x) * 0.06
                 lean.y += (target.y - lean.y) * 0.06
-                sculpture.rotation.y = Math.sin(spin) * 0.55 + lean.x * 0.5
-                sculpture.rotation.x = lean.y * 0.25 + Math.sin(t * 0.5) * 0.04
+                const zt = scrollProgress()
+                zoomS = reduced ? zt : zoomS + (zt - zoomS) * 0.14
+                const rise = ease(zoomS / 0.3)
+                const z = ease((zoomS - 0.32) / 0.5)
+                frame(rise, z)
+                wrap.style.opacity = (1 - ease((zoomS - 0.66) / 0.3) * 0.92).toFixed(3)
+                if (overlayRef.current) overlayRef.current.style.opacity = (1 - ease(z * 3)).toFixed(3)
+                sculpture.rotation.y = Math.sin(spin) * 0.55 * (1 - z) + lean.x * 0.5 + z * 0.9
+                sculpture.rotation.x = lean.y * 0.25 + Math.sin(t * 0.5) * 0.04 + z * 0.3
                 sculpture.rotation.z = Math.sin(t * 0.35) * 0.04
                 sculpture.position.y = reduced ? 0 : Math.sin(t * 0.9) * 0.05
                 const breathe = 1 + (reduced ? 0 : Math.sin(t * 1.3) * 0.008)
@@ -409,6 +502,10 @@ export function GlassHero() {
                 shield.scale.setScalar(0.35 + ease((tp - 0.43) / 0.25) * 0.75)
                 shield.material.opacity = hit * 0.95
 
+                voices[0].opacity = bump(since, 0.2, 0.6, TRAVEL_START + 0.1, TRAVEL_START + 0.6) * 0.55
+                voices[1].opacity = bump(since, ARRIVE - 0.2, ARRIVE + 0.1, ARRIVE + 1.0, ARRIVE + 1.8) * 0.55
+                rimMat.emissiveIntensity = 0.25 + (voices[0].opacity + voices[1].opacity) * 0.9
+
                 renderer.render(scene, camera)
 
                 // Words and labels drawn over the scene
@@ -419,8 +516,8 @@ export function GlassHero() {
                 // You: the word appears, then scrambles and locks as it enters the glass
                 const send = sendRef.current
                 if (send) {
-                    const [sx, sy] = toScreen(startPoint)
-                    place(send, sx, sy - 30)
+                    const [sx, sy] = toScreen(mouthUp(0))
+                    place(send, sx, sy - 8)
                     const lockP = ease((since - 0.45) / 0.55)
                     setClass(send, 'is-on', since > 0.05 && since < TRAVEL_START + 0.15)
                     setClass(send, 'is-locked', lockP > 0.5)
@@ -429,6 +526,10 @@ export function GlassHero() {
                         setText(send.lastElementChild, lockP >= 1 ? noise(Math.max(4, word.length + 2)) : noise(k) + word.slice(k))
                     }
                 }
+
+                // The chips stay beside the S wherever the camera puts it
+                placeChip(chipRef.current, -1.55, 1.15, 0)
+                placeChip(eyeRef.current, 1.85, -0.15, 0)
 
                 // The onlooker: a dashed probe line, then only noise
                 const eye = eyeRef.current
@@ -462,8 +563,8 @@ export function GlassHero() {
                 // Them: the noise resolves back into the word, for their eyes only
                 const recv = recvRef.current
                 if (recv) {
-                    const [rx, ry] = toScreen(endPoint)
-                    place(recv, rx, ry - 30)
+                    const [rx, ry] = toScreen(mouthUp(1))
+                    place(recv, rx, ry - 8)
                     const openP = ease((since - ARRIVE - 0.2) / 0.75)
                     setClass(recv, 'is-on', since > ARRIVE - 0.1 && since < CYCLE - 0.5)
                     setClass(recv, 'is-locked', openP < 1)
@@ -515,7 +616,7 @@ export function GlassHero() {
     return (
         <div
             ref={wrapRef}
-            className="glass-hero relative w-full aspect-[5/4] select-none"
+            className="glass-hero relative h-full w-full select-none"
             role="img"
             aria-label="A glass sculpture of the Strangers Connect S. A hello is locked into scrambled code, travels through the glass past an intruder who sees only noise, and unlocks for the other person."
         >
@@ -524,6 +625,7 @@ export function GlassHero() {
                     <LogoMark className="h-40 w-40" />
                 </div>
             )}
+            <div ref={overlayRef} className="pointer-events-none absolute inset-0">
             <svg className="pointer-events-none absolute inset-0 h-full w-full" aria-hidden="true">
                 <line ref={probeRef} className="probe-line" x1="0" y1="0" x2="0" y2="0" />
                 <circle ref={probeTipRef} className="probe-tip" r="3" cx="0" cy="0" />
@@ -544,9 +646,10 @@ export function GlassHero() {
                 <b className="font-medium text-paper">Intruder</b>
                 <span ref={eyeTextRef}>watching</span>
             </div>
-            <div className="glass-chip chip-a">
+            <div ref={chipRef} className="glass-chip chip-a">
                 <span className="chip-dot" aria-hidden="true" />
                 Nothing saved
+            </div>
             </div>
         </div>
     )

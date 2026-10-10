@@ -1,5 +1,6 @@
 'use client'
 
+import type { ReactNode } from 'react'
 import { FAQ } from '@/lib/site'
 import { LineIcon } from './Illustrations'
 import { MessageJourney, PrivacyDiagramV2 } from './PrivacyVisual'
@@ -33,75 +34,161 @@ function StartButton({ onStart, isConnected, size = 'lg' }: Props & { size?: 'lg
     )
 }
 
+function GlanceIcon({ name }: { name: 'device' | 'gift' | 'globe' | 'lock' | 'vanish' | 'mask' | 'shield' }) {
+    const paths: Record<typeof name, ReactNode> = {
+        device: (<><rect x="6" y="3" width="12" height="18" rx="2.5" /><path d="M10.5 18h3" /></>),
+        gift: (<><rect x="4" y="9" width="16" height="11" rx="1.5" /><path d="M3 9h18M12 9v11M12 9c-1.5-3-5-4-5-1.5S10 9 12 9zm0 0c1.5-3 5-4 5-1.5S14 9 12 9z" /></>),
+        globe: (<><circle cx="12" cy="12" r="8.5" /><path d="M3.5 12h17M12 3.5c2.6 2.6 2.6 14.4 0 17M12 3.5c-2.6 2.6-2.6 14.4 0 17" /></>),
+        lock: (<><rect x="5" y="10.5" width="14" height="10" rx="2.5" /><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5M12 14.5v2" /></>),
+        vanish: (<><path d="M4 7h16M9 7V4.5h6V7M6.5 7l1 13h9l1-13" /><path d="M10 11v5M14 11v5" /></>),
+        mask: (<><circle cx="12" cy="9" r="4" /><path d="M4.5 20c1.2-3.6 4-5.5 7.5-5.5s6.3 1.9 7.5 5.5" /><path d="M3 3l18 18" /></>),
+        shield: (<><path d="M12 3l7.5 3v5.5c0 4.6-3.2 8.2-7.5 9.5-4.3-1.3-7.5-4.9-7.5-9.5V6L12 3z" /><path d="M8.8 12.2l2.2 2.2 4.4-4.6" /></>),
+    }
+    return (
+        <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            {paths[name]}
+        </svg>
+    )
+}
+
 export default function Landing({ onStart, isConnected }: Props) {
     return (
         <main>
             <ScrollScenes />
-            {/* Hero */}
-            <section className="relative" data-scene="hero">
-                <div className="absolute inset-0 overflow-hidden" aria-hidden="true">
-                    <div data-anim="field" className="absolute inset-0"><NoiseField /></div>
-                    <div className="paper-grid absolute inset-0 opacity-60" />
-                    {/* fade the field into the page below */}
-                    <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-b from-transparent to-ink-900" />
+            {/* Hero: the stage stays on screen while the camera flies into the glass S */}
+            <section className="relative h-[280svh]" data-scene="hero">
+                <div className="sticky top-0 h-[100svh] overflow-hidden">
+                    <div className="absolute inset-0" aria-hidden="true">
+                        <div data-anim="field" className="absolute inset-0"><NoiseField /></div>
+                        <div className="paper-grid absolute inset-0 opacity-60" />
+                    </div>
+                    <div className="rise absolute inset-0" style={{ ['--delay' as string]: '0.2s' }}>
+                        <GlassHero />
+                    </div>
+                    <div className="pointer-events-none relative z-10 mx-auto max-w-page px-4 sm:px-6 pt-24 sm:pt-28 text-center">
+                        <div data-anim="hero-text" className="pointer-events-auto">
+                            <div className="rise"><Eyebrow>Free random video chat</Eyebrow></div>
+                            <h1 className="rise mt-5 font-serif text-[clamp(2.8rem,8vw,6.25rem)] leading-[0.95] tracking-[-0.02em] text-paper" style={{ ['--delay' as string]: '0.08s' }}>
+                                Talk to someone new.
+                                <br />
+                                <em className="text-glow-soft">Nothing in between.</em>
+                            </h1>
+                            <p className="rise mx-auto mt-6 max-w-xl text-[16px] sm:text-[17px] leading-relaxed text-paper-dim" style={{ ['--delay' as string]: '0.16s' }}>
+                                One click puts you face to face with a stranger anywhere in the world. No sign-up, no app,
+                                no feed. Just a private conversation, straight between you.
+                            </p>
+                            <div className="rise mt-8 flex flex-col sm:flex-row items-center justify-center gap-3" style={{ ['--delay' as string]: '0.24s' }}>
+                                <StartButton onStart={onStart} isConnected={isConnected} />
+                                <a href="#how" data-magnetic className="btn-ghost px-6 py-3.5 text-[15px]">See how it works</a>
+                            </div>
+                        </div>
+                    </div>
+                    <div className="pointer-events-none absolute inset-x-0 bottom-0 h-28 bg-gradient-to-b from-transparent to-ink-900" aria-hidden="true" />
                 </div>
-                <div className="relative mx-auto max-w-page px-4 sm:px-6 pt-16 sm:pt-24 text-center">
-                    <div data-anim="hero-text">
-                    <div className="rise"><Eyebrow>Free random video chat</Eyebrow></div>
-                    <h1 className="rise mt-6 font-serif text-[clamp(3rem,9vw,6.75rem)] leading-[0.95] tracking-[-0.02em] text-paper" style={{ ['--delay' as string]: '0.08s' }}>
-                        Talk to someone new.
-                        <br />
-                        <em className="text-glow-soft">Nothing in between.</em>
-                    </h1>
-                    <p className="rise mx-auto mt-7 max-w-xl text-[17px] leading-relaxed text-paper-dim" style={{ ['--delay' as string]: '0.16s' }}>
-                        One click puts you face to face with a stranger anywhere in the world. No sign-up, no app,
-                        no feed. Just a private conversation, straight between you. Random video chat, rebuilt with care.
-                    </p>
-                    <div className="rise mt-9 flex flex-col sm:flex-row items-center justify-center gap-3" style={{ ['--delay' as string]: '0.24s' }}>
-                        <StartButton onStart={onStart} isConnected={isConnected} />
-                        <a href="#how" data-magnetic className="btn-ghost px-6 py-3.5 text-[15px]">See how it works</a>
+            </section>
+
+            {/* Privacy: it rises out of the glass as the hero zoom ends */}
+            <section id="privacy" data-scene="privacy" className="relative z-10 -mt-[70svh] scroll-mt-24">
+                <div className="pointer-events-none absolute inset-x-0 top-0 h-[70svh] bg-gradient-to-b from-transparent to-ink-900" aria-hidden="true" />
+                <div className="absolute inset-x-0 top-[70svh] bottom-0 bg-ink-900" aria-hidden="true" />
+                <div data-anim="emerge" className="relative mx-auto max-w-[1320px] px-4 sm:px-6 pt-[30svh] pb-16">
+                    <div className="grid lg:grid-cols-[0.75fr_1.4fr] gap-12 lg:gap-14 items-center" style={{ perspective: '1600px' }}>
+                        <div>
+                            <Eyebrow>Private by design</Eyebrow>
+                            <h2 className="mt-4 font-serif text-4xl sm:text-5xl leading-[1.05] tracking-[-0.01em]">
+                                Only the two of you <em className="text-glow-soft">can see the call.</em>
+                            </h2>
+                            <p className="mt-6 text-[17px] leading-relaxed text-paper-dim max-w-md">
+                                Our server simply introduces you to someone new, then steps out of the way. Your video, voice
+                                and words travel locked between the two of you.
+                            </p>
+                            <p className="mt-6 max-w-md border-l border-paper/15 pl-4 text-[14px] leading-relaxed text-paper-mute">
+                                Want proof? Both of you see the same six-digit safety code. Read it aloud: if it matches,
+                                nobody is in between.
+                            </p>
+                        </div>
+
+                        {/* The diagram sits on the same flowing gradient as the hero */}
+                        <div data-anim="diagram" className="relative overflow-hidden rounded-[32px] border border-paper/10 shadow-[0_60px_120px_-50px_rgba(242,193,78,0.25)]">
+                            <div className="absolute inset-0" aria-hidden="true">
+                                <NoiseField palette="warm" />
+                                <div className="absolute inset-0 bg-ink-950/50" />
+                            </div>
+                            <div className="relative p-5 sm:p-8">
+                                <PrivacyDiagramV2 />
+                                <div className="mt-3 border-t border-paper/10 pt-4">
+                                    <p className="mb-3 font-mono text-[10.5px] uppercase tracking-[0.2em] text-paper-faint">What we see of your chat</p>
+                                    <MessageJourney />
+                                </div>
+                            </div>
+                        </div>
                     </div>
-                    <p className="rise mt-5 font-mono text-[11px] text-paper-faint" style={{ ['--delay' as string]: '0.3s' }}>
-                        Works in any browser on desktop, iPhone and Android · 18+
-                    </p>
-                    </div>
-                    <div className="rise mx-auto mt-10 sm:mt-6 max-w-[620px]" style={{ ['--delay' as string]: '0.2s' }}>
-                        <div data-anim="hero-art" className="origin-center">
-                            <GlassHero />
+
+                </div>
+
+                {/* Four promises: cards lying in a row that slide sideways as you scroll down */}
+                <div data-scene="pillars" className="relative h-[260svh]">
+                    <div className="sticky top-0 flex h-[100svh] flex-col justify-center overflow-hidden">
+                        <div className="mx-auto w-full max-w-page px-4 sm:px-6">
+                            <Eyebrow>Four promises</Eyebrow>
+                            <h3 className="mt-3 font-serif text-3xl sm:text-4xl tracking-[-0.01em] text-paper">What private means here.</h3>
+                        </div>
+                        <div data-anim="pillar-track" className="pillar-track mt-10 flex gap-5 sm:gap-7" style={{ perspective: '1400px' }}>
+                            {[
+                                { t: 'Locked', d: 'Video, voice and chat are locked on your device. Only the other person can open them.', icon: 'lock' as const },
+                                { t: 'Unsaved', d: 'No recordings and no chat history. Close the tab and it is gone.', icon: 'vanish' as const },
+                                { t: 'Anonymous', d: 'No account, email or profile. You start blurred until you choose.', icon: 'mask' as const },
+                                { t: 'Protected', d: 'Links from strangers cannot be clicked, reporting takes one tap, repeat offenders are banned.', icon: 'shield' as const },
+                            ].map((c, i) => (
+                                <article key={c.t} data-anim="pillar" className="pillar-card">
+                                    <div className="pillar-glow" aria-hidden="true" />
+                                    <div className="relative flex items-start justify-between">
+                                        <div className="glance-icon"><GlanceIcon name={c.icon} /></div>
+                                        <span className="font-mono text-[12px] text-paper-faint">0{i + 1} / 04</span>
+                                    </div>
+                                    <h4 className="relative mt-auto font-serif text-[clamp(2.4rem,4.4vw,3.6rem)] leading-none tracking-[-0.015em] text-paper">{c.t}</h4>
+                                    <p className="relative mt-4 max-w-[30ch] text-[15px] leading-relaxed text-paper-mute">{c.d}</p>
+                                </article>
+                            ))}
                         </div>
                     </div>
                 </div>
             </section>
 
-            {/* Trust strip */}
-            <section aria-label="At a glance" className="relative z-10 border-y border-paper/10 bg-ink-900">
-                <ul className="mx-auto max-w-page px-4 sm:px-6 grid grid-cols-2 md:grid-cols-4">
+            {/* At a glance: three glass cards that flip up into place and tilt toward the pointer */}
+            <section aria-label="At a glance" className="relative z-10 mx-auto max-w-page px-4 sm:px-6 pt-6 pb-10">
+                <div className="grid gap-4 sm:grid-cols-3" style={{ perspective: '1400px' }}>
                     {[
-                        ['Private', 'Only the two of you can see the call'],
-                        ['No', 'Account, email or phone number'],
-                        ['1 click', 'To skip to the next person'],
-                        ['0', 'Messages or calls stored, ever'],
-                    ].map(([k, v], i) => (
-                        <li key={k} data-anim="stat" data-spotlight className={`stat-cell py-7 px-4 sm:px-6 ${i > 0 ? 'md:border-l' : ''} ${i % 2 === 1 ? 'border-l' : ''} ${i > 1 ? 'border-t md:border-t-0' : ''} border-paper/10`}>
-                            <p className="font-serif text-3xl text-paper">{k}</p>
-                            <p className="mt-1 text-sm text-paper-mute">{v}</p>
-                        </li>
+                        { t: 'Works in your browser', d: 'iPhone, Android or laptop. Nothing to install and nothing to update.', icon: 'device' as const },
+                        { t: 'Free, for real', d: 'No coins, no paywalls, no premium tier. Every feature for everyone.', icon: 'gift' as const },
+                        { t: 'Meet the world', d: 'Someone new from anywhere, usually in a few seconds.', icon: 'globe' as const },
+                    ].map((c) => (
+                        <div key={c.t} data-anim="glance" className="glance-card">
+                            <div data-tilt className="glance-inner">
+                                <span className="glance-glare" aria-hidden="true" />
+                                <div className="glance-icon"><GlanceIcon name={c.icon} /></div>
+                                <h3 className="mt-6 text-[17px] font-medium text-paper">{c.t}</h3>
+                                <p className="mt-2 text-[14.5px] leading-relaxed text-paper-mute">{c.d}</p>
+                            </div>
+                        </div>
                     ))}
-                </ul>
+                </div>
             </section>
 
-            {/* Statement: words light up as you scroll */}
-            <section data-scene="statement" className="relative flex min-h-[100svh] items-center">
-                <div className="mx-auto w-full max-w-page px-4 sm:px-6 pt-36 pb-24 sm:pt-44">
-                    <p className="font-serif text-[clamp(2.1rem,5.6vw,4.6rem)] leading-[1.06] tracking-[-0.015em] max-w-5xl">
-                        {'Two strangers. One click. A real conversation, sent straight between you. Nothing stored. Nothing sold. Nothing in between.'
-                            .split(' ')
-                            .map((word, i) => (
-                                <span key={i} data-anim="word" className="statement-word">
-                                    {word}{' '}
-                                </span>
-                            ))}
-                    </p>
+            {/* Statement: the line stays put while each word fills in as you scroll */}
+            <section data-scene="statement" className="relative h-[240svh]">
+                <div className="sticky top-0 flex h-[100svh] items-center">
+                    <div className="mx-auto w-full max-w-page px-4 sm:px-6">
+                        <p className="font-serif text-[clamp(2.1rem,5.6vw,4.6rem)] leading-[1.06] tracking-[-0.015em] max-w-5xl">
+                            {'Two strangers. One click. A real conversation, sent straight between you. Nothing stored. Nothing sold. Nothing in between.'
+                                .split(' ')
+                                .map((word, i) => (
+                                    <span key={i} data-anim="word" className="statement-word">
+                                        {word}{' '}
+                                    </span>
+                                ))}
+                        </p>
+                    </div>
                 </div>
             </section>
 
@@ -131,64 +218,6 @@ export default function Landing({ onStart, isConnected }: Props) {
                         </li>
                     ))}
                 </ol>
-                </div>
-            </section>
-
-            {/* Privacy */}
-            <section id="privacy" data-scene="privacy" className="relative border-y border-paper/10 bg-ink-850/60 scroll-mt-24">
-                <div className="relative mx-auto max-w-page px-4 sm:px-6 py-24 sm:py-32">
-                    <div className="grid lg:grid-cols-[0.9fr_1.25fr] gap-12 lg:gap-16 items-center">
-                        <div>
-                            <Eyebrow>Private by design</Eyebrow>
-                            <h2 className="mt-4 font-serif text-4xl sm:text-5xl leading-[1.05] tracking-[-0.01em]">
-                                Only the two of you <em className="text-glow-soft">can see the call.</em>
-                            </h2>
-                            <p className="mt-6 text-[17px] leading-relaxed text-paper-dim max-w-md">
-                                Our server simply introduces you to someone new, then steps out of the way. Your video, voice
-                                and words travel locked between the two of you.
-                            </p>
-                            <p className="mt-6 max-w-md border-l border-paper/15 pl-4 text-[14px] leading-relaxed text-paper-mute">
-                                Want proof? Both of you see the same six-digit safety code. Read it aloud: if it matches,
-                                nobody is in between.
-                            </p>
-                        </div>
-
-                        {/* The diagram sits on the same flowing gradient as the hero */}
-                        <div data-anim="diagram" className="relative overflow-hidden rounded-[28px] border border-paper/10">
-                            <div className="absolute inset-0" aria-hidden="true">
-                                <NoiseField palette="warm" />
-                                <div className="absolute inset-0 bg-ink-950/50" />
-                            </div>
-                            <div className="relative p-4 sm:p-6">
-                                <PrivacyDiagramV2 />
-                                <div className="mt-3 border-t border-paper/10 pt-4">
-                                    <p className="mb-3 font-mono text-[10.5px] uppercase tracking-[0.2em] text-paper-faint">What we see of your chat</p>
-                                    <MessageJourney />
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Four promises, editorial and quiet */}
-                    <div data-scene="pillars" className="mt-20">
-                    <ol className="grid gap-y-10 sm:grid-cols-2 lg:grid-cols-4 border-t border-paper/10">
-                        {[
-                            ['Locked', 'Video, voice and chat are locked on your device. Only the other person can open them.'],
-                            ['Unsaved', 'No recordings and no chat history. Close the tab and it is gone.'],
-                            ['Anonymous', 'No account, email or profile. You start blurred until you choose.'],
-                            ['Protected', 'Links from strangers cannot be clicked, reporting takes one tap, repeat offenders are banned.'],
-                        ].map(([t, d], i) => (
-                            <li key={t} data-anim="pillar" className={`group relative pt-8 lg:pr-8 ${i > 0 ? 'lg:pl-8 lg:border-l border-paper/10' : ''}`}>
-                                {/* soft card that appears while this promise is in focus */}
-                                <span data-anim="pillar-card" className="pointer-events-none absolute -inset-x-3 -bottom-4 top-3 rounded-2xl border border-paper/10 bg-ink-900/90 opacity-0 shadow-[0_30px_80px_-30px_rgba(242,193,78,0.28)]" aria-hidden="true" />
-                                <span className="absolute left-0 top-0 h-px w-0 bg-gradient-to-r from-glow to-transparent transition-all duration-500 group-hover:w-full lg:left-auto" aria-hidden="true" />
-                                <span className="relative font-mono text-[11px] text-paper-faint">0{i + 1}</span>
-                                <h3 className="relative mt-3 font-serif text-3xl tracking-[-0.01em] text-paper">{t}</h3>
-                                <p className="relative mt-3 text-[14.5px] leading-relaxed text-paper-mute">{d}</p>
-                            </li>
-                        ))}
-                    </ol>
-                    </div>
                 </div>
             </section>
 
