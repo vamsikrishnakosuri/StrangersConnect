@@ -3,7 +3,7 @@
 import { FAQ } from '@/lib/site'
 import { LineIcon } from './Illustrations'
 import { MessageJourney, PrivacyDiagramV2 } from './PrivacyVisual'
-import { GlassHero } from './GlassHero'
+import { Hero3D } from './Hero3D'
 import { NoiseField } from './NoiseField'
 import ScrollScenes from './ScrollScenes'
 
@@ -65,9 +65,9 @@ export default function Landing({ onStart, isConnected }: Props) {
                         Works in any browser on desktop, iPhone and Android · 18+
                     </p>
                     </div>
-                    <div className="rise mx-auto mt-10 sm:mt-6 max-w-[620px]" style={{ ['--delay' as string]: '0.2s' }}>
+                    <div className="rise mx-auto mt-10 sm:mt-6 max-w-[760px]" style={{ ['--delay' as string]: '0.2s' }}>
                         <div data-anim="hero-art" className="origin-center">
-                            <GlassHero />
+                            <Hero3D />
                         </div>
                     </div>
                 </div>

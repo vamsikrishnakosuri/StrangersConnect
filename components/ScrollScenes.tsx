@@ -31,11 +31,11 @@ export default function ScrollScenes() {
             const ctx = gsap.context(() => {
                 const mm = gsap.matchMedia()
 
-                // Hero: on larger screens the scene pins while the drawing zooms toward you
+                // Hero: on larger screens the scene zooms toward you as you scroll past (no pin, so nothing can overlap)
                 mm.add('(min-width: 768px)', () => {
                     const tl = gsap.timeline({
                         defaults: { ease: 'none' },
-                        scrollTrigger: { trigger: '[data-scene="hero"]', start: 'top top', end: '+=85%', scrub: 0.8, pin: true },
+                        scrollTrigger: { trigger: '[data-scene="hero"]', start: 'top top', end: 'bottom top', scrub: 0.8 },
                     })
                     // 1. Text drifts away while the scene zooms toward you
                     tl.to('[data-anim="hero-text"]', { y: -90, opacity: 0, duration: 0.35 }, 0)
@@ -62,13 +62,13 @@ export default function ScrollScenes() {
                     scrollTrigger: { trigger: '[data-anim="stat"]', start: 'top 85%' },
                 })
 
-                // Statement: each word brightens in turn while the section is held in place
+                // Statement: each word brightens in turn as the line scrolls into view
                 const words = gsap.utils.toArray<HTMLElement>('[data-anim="word"]')
                 gsap.to(words, {
                     color: '#ece9e2',
                     stagger: 0.12,
                     ease: 'none',
-                    scrollTrigger: { trigger: '[data-scene="statement"]', start: 'top top', end: '+=75%', scrub: 0.6, pin: true },
+                    scrollTrigger: { trigger: '[data-scene="statement"]', start: 'top 80%', end: 'center 45%', scrub: 0.6 },
                 })
 
                 // How it works: a glowing line sweeps across, then each step rises
@@ -240,15 +240,21 @@ export default function ScrollScenes() {
                 if (refreshTimer) clearTimeout(refreshTimer)
                 refreshTimer = setTimeout(() => ScrollTrigger.refresh(), 150)
             }
-            let lastHeight = document.body.scrollHeight
-            const heightWatch = new ResizeObserver(() => {
-                const h = document.body.scrollHeight
-                if (Math.abs(h - lastHeight) > 2) {
-                    lastHeight = h
-                    refresh()
+            // Pinned sections get fixed-height spacers, so watch each section too, not just the page
+            const sizes = new Map<Element, number>()
+            const heightWatch = new ResizeObserver((entries) => {
+                let changed = false
+                for (const e of entries) {
+                    const h = Math.round(e.contentRect.height)
+                    if (Math.abs((sizes.get(e.target) ?? -99) - h) > 2) {
+                        sizes.set(e.target, h)
+                        changed = true
+                    }
                 }
+                if (changed) refresh()
             })
             heightWatch.observe(document.body)
+            document.querySelectorAll('[data-scene], [data-scene] > *').forEach((el) => heightWatch.observe(el))
             window.addEventListener('load', refresh)
             document.fonts?.ready.then(refresh)
 
