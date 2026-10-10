@@ -530,3 +530,34 @@ html.lenis, html.lenis body {
   }
   .vanish-bubble { opacity: 1; }
 }
+
+/* 3D orbs hero: labels that ride above each orb, and a CSS stand-in without WebGL */
+.orb-label,
+.orb-hi {
+    position: absolute;
+    left: 0;
+    top: 0;
+    pointer-events: none;
+    white-space: nowrap;
+    will-change: transform, opacity;
+    opacity: 0;
+}
+.orb-label {
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: lowercase;
+    color: rgba(236, 233, 226, 0.62);
+}
+.orb-hi {
+    font-family: var(--font-serif, Georgia, serif);
+    font-style: italic;
+    font-size: 22px;
+    color: #f6d488;
+    text-shadow: 0 0 18px rgba(242, 193, 78, 0.55);
+}
+.orbs-hero[data-fallback='true'] {
+    background:
+        radial-gradient(circle at 38% 52%, rgba(242, 193, 78, 0.55) 0, rgba(242, 193, 78, 0.12) 13%, transparent 22%),
+        radial-gradient(circle at 62% 50%, rgba(115, 235, 242, 0.45) 0, rgba(115, 235, 242, 0.1) 12%, transparent 21%);
+}
