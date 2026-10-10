@@ -3,19 +3,32 @@
 import { useEffect, useRef, useState } from 'react'
 import { LogoMark } from './Logo'
 
-// The S from the logo as a liquid-glass sculpture. A warm light runs through its core
-// like a message; when it arrives a greeting pops out. Drag to spin it, tap to send
-// a message, and it leans toward the pointer. three.js loads only with this scene.
+// The S from the logo as a liquid-glass sculpture, telling the story of a private message:
+// you say hi, it scrambles and locks as it enters the glass, travels sealed, an onlooker
+// tries to listen and gets only noise, and it unlocks as "hi" for the other person.
+// Drag to spin it, tap to send a new message. three.js loads only with this scene.
 
 const GREETINGS = ['hi', 'hola', 'bonjour', 'namaste', 'ciao', 'hallo', 'olá', 'merhaba', 'salut', 'hey', 'konnichiwa', 'jambo']
-const PULSE_EVERY = 4.6
-const PULSE_TIME = 2.1
+// One message, in seconds: lock, travel sealed, unlock, rest
+const CYCLE = 7.4
+const TRAVEL_START = 1.15
+const TRAVEL_TIME = 3.0
+const ARRIVE = TRAVEL_START + TRAVEL_TIME
+const GLYPHS = 'ABCDEFGHJKLMNPQRSTUVWXYZ0123456789#$%&@*+=/<>'
+const noise = (n: number) => Array.from({ length: n }, () => GLYPHS[(Math.random() * GLYPHS.length) | 0]).join('')
 
 const ease = (x: number) => (x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x))
+const bump = (x: number, a: number, b: number, c: number, d: number) => ease((x - a) / (b - a)) * (1 - ease((x - c) / (d - c)))
 
 export function GlassHero() {
     const wrapRef = useRef<HTMLDivElement>(null)
-    const hiRef = useRef<HTMLSpanElement>(null)
+    const sendRef = useRef<HTMLDivElement>(null)
+    const recvRef = useRef<HTMLDivElement>(null)
+    const cipherRef = useRef<HTMLSpanElement>(null)
+    const eyeRef = useRef<HTMLDivElement>(null)
+    const eyeTextRef = useRef<HTMLSpanElement>(null)
+    const probeRef = useRef<SVGLineElement>(null)
+    const probeTipRef = useRef<SVGCircleElement>(null)
     const [fallback, setFallback] = useState(false)
 
     useEffect(() => {
@@ -136,12 +149,12 @@ export function GlassHero() {
             // The light inside: a thin core with a message pulse running through it
             const coreMat = keep(
                 new THREE.ShaderMaterial({
-                    uniforms: { progress: { value: -1 }, on: { value: 0 }, amber: { value: AMBER.clone() }, teal: { value: TEAL.clone() } },
+                    uniforms: { progress: { value: -1 }, on: { value: 0 }, locked: { value: 0 }, amber: { value: AMBER.clone() }, teal: { value: TEAL.clone() } },
                     vertexShader: `
                         varying float vU;
                         void main() { vU = uv.x; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
                     fragmentShader: `
-                        uniform float progress, on;
+                        uniform float progress, on, locked;
                         uniform vec3 amber, teal;
                         varying float vU;
                         void main() {
@@ -149,7 +162,8 @@ export function GlassHero() {
                             float head = exp(-d * d * 900.0);
                             float trail = d < 0.0 ? exp(d * 9.0) : 0.0;
                             vec3 base = mix(teal, amber, vU) * 0.24;
-                            vec3 c = base + amber * head * 5.0 * on + mix(teal, amber, 0.6) * trail * 1.1 * on;
+                            vec3 hc = mix(amber, teal * 1.3, locked);
+                            vec3 c = base + hc * head * 5.0 * on + hc * trail * 1.0 * on;
                             gl_FragColor = vec4(c, 1.0);
                         }`,
                 }),
@@ -173,6 +187,40 @@ export function GlassHero() {
             flare.scale.setScalar(0.7)
             flare.renderOrder = 10
             sculpture.add(flare)
+
+            // The shield: a ring of glass hexagons that flashes where someone tries to look in
+            const hexTex = (() => {
+                const c = document.createElement('canvas')
+                c.width = c.height = 256
+                const x = c.getContext('2d')!
+                x.strokeStyle = 'rgba(160,240,245,1)'
+                x.lineWidth = 2
+                const r = 14
+                const h = Math.sqrt(3) * r
+                for (let row = -1; row < 12; row++) {
+                    for (let col = -1; col < 13; col++) {
+                        const cx = col * r * 1.5
+                        const cy = row * h + (col % 2 ? h / 2 : 0)
+                        const dist = Math.hypot(cx - 128, cy - 128)
+                        if (dist > 118) continue
+                        x.globalAlpha = Math.max(0, 1 - Math.abs(dist - 80) / 50)
+                        x.beginPath()
+                        for (let k = 0; k < 6; k++) {
+                            const a = (Math.PI / 3) * k
+                            const px = cx + Math.cos(a) * (r - 2)
+                            const py = cy + Math.sin(a) * (r - 2)
+                            if (k) x.lineTo(px, py)
+                            else x.moveTo(px, py)
+                        }
+                        x.closePath()
+                        x.stroke()
+                    }
+                }
+                return keep(new THREE.CanvasTexture(c))
+            })()
+            const shield = new THREE.Sprite(keep(new THREE.SpriteMaterial({ map: hexTex, color: 0x9ff0f5, blending: THREE.AdditiveBlending, depthTest: false, depthWrite: false, transparent: true, opacity: 0 })))
+            shield.renderOrder = 11
+            sculpture.add(shield)
 
             // Small glass beads on slow orbits, never touching the S
             const beadMat = keep(new THREE.MeshPhysicalMaterial({ color: 0xffffff, roughness: 0.05, transmission: 1, thickness: 0.3, ior: 1.5, iridescence: 1, iridescenceThicknessRange: [200, 700], clearcoat: 1 }))
@@ -257,7 +305,7 @@ export function GlassHero() {
                 if (moved < 6) {
                     // A tap: a little hop and a fresh message
                     spinVel += 0.25
-                    pulseStart = clock()
+                    pulseStart = clock() - 0.2
                 }
             }
             window.addEventListener('pointermove', onPointer, { passive: true })
@@ -270,9 +318,27 @@ export function GlassHero() {
             const clock = () => (performance.now() - startTime) / 1000
             const v = new THREE.Vector3()
             const head = new THREE.Vector3()
+            const startPoint = curve.getPointAt(0)
             const endPoint = curve.getPointAt(1)
+            const toScreen = (p: InstanceType<typeof THREE.Vector3>) => {
+                v.copy(p).applyMatrix4(sculpture.matrixWorld).project(camera)
+                return [((v.x + 1) / 2) * wrap.clientWidth, ((1 - v.y) / 2) * wrap.clientHeight]
+            }
+            const setText = (el: Element | null | undefined, text: string) => {
+                if (el && el.textContent !== text) el.textContent = text
+            }
+            const setClass = (el: Element | null, name: string, on: boolean) => {
+                if (el && el.classList.contains(name) !== on) el.classList.toggle(name, on)
+            }
+            const place = (el: HTMLElement | null, x: number, y: number) => {
+                if (!el) return
+                el.style.left = `${x.toFixed(1)}px`
+                el.style.top = `${y.toFixed(1)}px`
+            }
             let greet = -1
-            let hiShown = false
+            let word = GREETINGS[0]
+            let lastCycle = -1
+            let lastNoise = 0
             let lastT = 0
 
             const render = (now: number) => {
@@ -304,38 +370,108 @@ export function GlassHero() {
                 ring.rotation.z = t * 0.05
                 ring2.rotation.z = -t * 0.12
 
-                // The message pulse
-                const since = t - pulseStart
-                if (since > PULSE_EVERY) pulseStart = t
-                const prog = ease(since / PULSE_TIME)
-                const on = since < PULSE_TIME + 0.4 ? 1 - ease((since - PULSE_TIME) / 0.4) : 0
-                coreMat.uniforms.progress.value = since < PULSE_TIME + 0.4 ? prog : -1
+                // One message: lock, travel sealed past an onlooker, unlock
+                let since = t - pulseStart
+                if (since > CYCLE) {
+                    pulseStart = t
+                    since = 0
+                }
+                if (pulseStart !== lastCycle) {
+                    lastCycle = pulseStart
+                    greet = (greet + 1) % GREETINGS.length
+                    word = GREETINGS[greet]
+                }
+                const tp = (since - TRAVEL_START) / TRAVEL_TIME
+                const prog = ease(tp)
+                const on = tp > 0 ? (tp < 1 ? ease(tp * 8) : 1 - ease((tp - 1) * 5)) : 0
+                coreMat.uniforms.progress.value = tp > 0 && tp < 1.25 ? prog : -1
                 coreMat.uniforms.on.value = on
-                curve.getPointAt(Math.min(prog, 1), head)
+                coreMat.uniforms.locked.value = 1
+                curve.getPointAt(Math.min(Math.max(prog, 0), 1), head)
                 flare.position.copy(head)
-                flare.material.opacity = on * 0.9
+                flare.material.color.set(0x9ff0f5)
+                flare.material.opacity = on * 0.8
+                glowLight.color.set(0x7fe6ec)
                 glowLight.position.copy(head).applyMatrix4(sculpture.matrixWorld)
-                glowLight.intensity = on * 2.2
+                glowLight.intensity = on * 2.0
+
+                // The onlooker probes the middle of the trip and hits the shield
+                const probe = bump(tp, 0.36, 0.44, 0.62, 0.7)
+                const hit = bump(tp, 0.43, 0.48, 0.6, 0.72)
+                shield.position.copy(head)
+                shield.scale.setScalar(0.35 + ease((tp - 0.43) / 0.25) * 0.75)
+                shield.material.opacity = hit * 0.95
 
                 renderer.render(scene, camera)
 
-                // The greeting chip pops where the message arrives
-                const el = hiRef.current
-                if (el) {
-                    const arrived = since > PULSE_TIME - 0.1 && since < PULSE_TIME + 1.6
-                    if (arrived && !hiShown) {
-                        greet = (greet + 1) % GREETINGS.length
-                        el.textContent = GREETINGS[greet]
+                // Words and labels drawn over the scene
+                const tick = now - lastNoise > 70
+                if (tick) lastNoise = now
+                const [hx, hy] = toScreen(head)
+
+                // You: the word appears, then scrambles and locks as it enters the glass
+                const send = sendRef.current
+                if (send) {
+                    const [sx, sy] = toScreen(startPoint)
+                    place(send, sx, sy - 30)
+                    const lockP = ease((since - 0.45) / 0.55)
+                    setClass(send, 'is-on', since > 0.05 && since < TRAVEL_START + 0.15)
+                    setClass(send, 'is-locked', lockP > 0.5)
+                    if (tick || lockP === 0) {
+                        const k = Math.round(lockP * word.length)
+                        setText(send.lastElementChild, lockP >= 1 ? noise(Math.max(4, word.length + 2)) : noise(k) + word.slice(k))
                     }
-                    if (arrived !== hiShown) {
-                        hiShown = arrived
-                        el.classList.toggle('is-on', arrived)
+                }
+
+                // The sealed message rides the light
+                const cipher = cipherRef.current
+                if (cipher) {
+                    place(cipher, hx, hy - 22)
+                    setClass(cipher, 'is-on', tp > 0.03 && tp < 0.97)
+                    if (tick) setText(cipher, noise(7))
+                }
+
+                // The onlooker: a dashed probe line, then only noise
+                const eye = eyeRef.current
+                const line = probeRef.current
+                if (eye && line) {
+                    const ex = eye.offsetLeft
+                    const ey = eye.offsetTop + eye.offsetHeight / 2
+                    const reach = ease((tp - 0.36) / 0.08)
+                    const px = ex + (hx - ex) * reach
+                    const py = ey + (hy - ey) * reach
+                    line.setAttribute('x1', ex.toFixed(1))
+                    line.setAttribute('y1', ey.toFixed(1))
+                    line.setAttribute('x2', px.toFixed(1))
+                    line.setAttribute('y2', py.toFixed(1))
+                    line.style.opacity = (probe * 0.9).toFixed(2)
+                    const tipEl = probeTipRef.current
+                    if (tipEl) {
+                        tipEl.setAttribute('cx', px.toFixed(1))
+                        tipEl.setAttribute('cy', py.toFixed(1))
+                        tipEl.style.opacity = probe.toFixed(2)
                     }
-                    v.copy(endPoint).applyMatrix4(sculpture.matrixWorld).project(camera)
-                    const sx = ((v.x + 1) / 2) * wrap.clientWidth
-                    const sy = ((1 - v.y) / 2) * wrap.clientHeight
-                    el.style.left = `${sx.toFixed(1)}px`
-                    el.style.top = `${(sy - 34).toFixed(1)}px`
+                    const probing = tp > 0.42 && tp < 0.7
+                    const blocked = tp >= 0.7 && since < CYCLE - 0.4
+                    setClass(eye, 'is-probing', probing)
+                    setClass(eye, 'is-blocked', blocked)
+                    if (probing) {
+                        if (tick) setText(eyeTextRef.current, 'sees ' + noise(6))
+                    } else setText(eyeTextRef.current, blocked ? 'got only noise' : 'trying to listen')
+                }
+
+                // Them: the noise resolves back into the word, for their eyes only
+                const recv = recvRef.current
+                if (recv) {
+                    const [rx, ry] = toScreen(endPoint)
+                    place(recv, rx, ry - 30)
+                    const openP = ease((since - ARRIVE - 0.2) / 0.75)
+                    setClass(recv, 'is-on', since > ARRIVE - 0.1 && since < CYCLE - 0.5)
+                    setClass(recv, 'is-locked', openP < 1)
+                    if (tick || openP >= 1) {
+                        const k = Math.round(openP * word.length)
+                        setText(recv.lastElementChild, word.slice(0, k) + noise(word.length - k))
+                    }
                 }
             }
 
@@ -352,7 +488,7 @@ export function GlassHero() {
                 if (visible && !document.hidden) render(now)
             }
             if (reduced) {
-                pulseStart = 3 - PULSE_TIME * 0.6
+                pulseStart = 3 - (TRAVEL_START + TRAVEL_TIME * 0.55)
                 render(performance.now())
             } else raf = requestAnimationFrame(loop)
 
@@ -382,31 +518,46 @@ export function GlassHero() {
             ref={wrapRef}
             className="glass-hero relative w-full aspect-[5/4] select-none"
             role="img"
-            aria-label="A glass sculpture of the Strangers Connect S. A warm light runs through it like a message and a greeting pops out at the end."
+            aria-label="A glass sculpture of the Strangers Connect S. A hello is locked into scrambled code, travels through the glass past someone trying to listen who sees only noise, and unlocks for the other person."
         >
             {fallback && (
                 <div className="absolute inset-0 grid place-items-center">
                     <LogoMark className="h-40 w-40" />
                 </div>
             )}
-            <span ref={hiRef} className="hi-chip">hi</span>
+            <svg className="pointer-events-none absolute inset-0 h-full w-full" aria-hidden="true">
+                <line ref={probeRef} className="probe-line" x1="0" y1="0" x2="0" y2="0" />
+                <circle ref={probeTipRef} className="probe-tip" r="3" cx="0" cy="0" />
+            </svg>
+            <div ref={sendRef} className="msg-bubble">
+                <LockIcon />
+                <span>hi</span>
+            </div>
+            <span ref={cipherRef} className="cipher-tag" aria-hidden="true">x9#Lq2@</span>
+            <div ref={recvRef} className="msg-bubble msg-recv">
+                <LockIcon />
+                <span>hi</span>
+            </div>
+            <div ref={eyeRef} className="glass-chip eye-chip">
+                <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" aria-hidden="true">
+                    <path d="M1.5 8s2.4-4.5 6.5-4.5S14.5 8 14.5 8 12.1 12.5 8 12.5 1.5 8 1.5 8z" fill="none" stroke="currentColor" strokeWidth="1.3" />
+                    <circle cx="8" cy="8" r="2" fill="currentColor" />
+                </svg>
+                <span ref={eyeTextRef}>trying to listen</span>
+            </div>
             <div className="glass-chip chip-a">
-                <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" aria-hidden="true">
-                    <rect x="3.5" y="7" width="9" height="6.5" rx="1.6" fill="none" stroke="currentColor" strokeWidth="1.3" />
-                    <path d="M5.5 7V5.2a2.5 2.5 0 0 1 5 0V7" fill="none" stroke="currentColor" strokeWidth="1.3" />
-                </svg>
-                Encrypted calls
-            </div>
-            <div className="glass-chip chip-b">
                 <span className="chip-dot" aria-hidden="true" />
-                No sign-up
-            </div>
-            <div className="glass-chip chip-c">
-                <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" aria-hidden="true">
-                    <path d="M4 8h8M9 5l3 3-3 3" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-                Next in one tap
+                Nothing saved
             </div>
         </div>
+    )
+}
+
+function LockIcon() {
+    return (
+        <svg viewBox="0 0 16 16" className="msg-lock" aria-hidden="true">
+            <rect x="3.5" y="7" width="9" height="6.5" rx="1.6" fill="currentColor" />
+            <path d="M5.5 7V5.2a2.5 2.5 0 0 1 5 0V7" fill="none" stroke="currentColor" strokeWidth="1.5" />
+        </svg>
     )
 }
