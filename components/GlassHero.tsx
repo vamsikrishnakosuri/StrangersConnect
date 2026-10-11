@@ -329,7 +329,7 @@ export function GlassHero() {
                 // Start: a modest size, centred in the space below the headline (or just under it
                 // on short screens). From there the scroll only ever zooms in.
                 const free = H - textBottom - 24
-                const ppu0 = Math.max(H * 0.12, Math.min((W * 0.58) / 3.4, free / 3.3, H * 0.2))
+                const ppu0 = Math.min((W * 0.72) / 3.4, Math.max(H * 0.1, Math.min((W * 0.58) / 3.4, free / 3.3, H * 0.2)))
                 const ppuMid = Math.max(ppu0 * 1.25, Math.min((W * 0.8) / 3.4, (H * 0.62) / 3.0))
                 const ppu1 = Math.max(H * 1.0, ppuMid * 3)
                 const cy0 = textBottom + 24 + Math.max(1.5 * ppu0, Math.min(free / 2, H * 0.32))
