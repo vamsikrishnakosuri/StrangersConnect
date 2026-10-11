@@ -326,12 +326,13 @@ export function GlassHero() {
                 const W = wrap.clientWidth
                 const H = wrap.clientHeight
                 const tanH = Math.tan((camera.fov * Math.PI) / 360)
-                // Start: just below the headline, peeking up from the bottom of the screen if it must
+                // Start: a modest size, centred in the space below the headline (or just under it
+                // on short screens). From there the scroll only ever zooms in.
                 const free = H - textBottom - 24
-                const ppu0 = Math.min((W * 0.94) / 3.4, Math.max(free / 3.0, H * 0.17))
-                const ppuMid = Math.min((W * 0.9) / 3.4, (H * 0.78) / 3.0)
-                const ppu1 = H * 1.0
-                const cy0 = textBottom + 24 + 1.45 * ppu0
+                const ppu0 = Math.max(H * 0.12, Math.min((W * 0.58) / 3.4, free / 3.3, H * 0.2))
+                const ppuMid = Math.max(ppu0 * 1.25, Math.min((W * 0.8) / 3.4, (H * 0.62) / 3.0))
+                const ppu1 = Math.max(H * 1.0, ppuMid * 3)
+                const cy0 = textBottom + 24 + Math.max(1.5 * ppu0, Math.min(free / 2, H * 0.32))
                 const ppu = (ppu0 + (ppuMid - ppu0) * rise) * Math.pow(ppu1 / ppuMid, z)
                 const cy = cy0 + (H / 2 - cy0) * rise
                 camera.position.set(0, 0, H / (2 * ppu * tanH))
